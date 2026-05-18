@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>テレアポ進捗同期マトリックス</title>
+    <title>テレアポ同期マトリックス</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
@@ -17,11 +17,10 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useEffect } = React;
+        const { useState, useMemo, useEffect, useRef } = React;
 
         const TERMS = ["11:00-13:00", "13:00-15:00", "15:00-17:00", "17:00-19:00"];
         
-        // アポ経路（すべて同等の扱いで定義）
         const APP_KEYS = [
             "app_28_connect", "app_28_connect_3day", 
             "app_28_callback", "app_28_callback_3day",
@@ -30,7 +29,6 @@
             "app_27_sms"
         ];
 
-        // 同期用パブリックURL
         const SYNC_URL = "https://kvdb.io/MN86yvU67wUshH9pZpLgS6/";
 
         const createInitialMember = (id, name, buddy) => ({
@@ -53,33 +51,40 @@
         ];
 
         function App() {
+            const [isLoggedIn, setIsLoggedIn] = useState(false); // 🔑 ログイン管理
+            const [roomName, setRoomName] = useState("");        // 🔑 パスキー（部屋名）
             const [activeTab, setActiveTab] = useState("matrix");
-            const [roomName, setRoomName] = useState("open_room_1");
             const [members, setMembers] = useState(defaultMembers);
             const [selectedMemberId, setSelectedMemberId] = useState("user-1");
             const [selectedTerm, setSelectedTerm] = useState("11:00-13:00");
             const [selectedAppType, setSelectedAppType] = useState("app_28_connect");
             const [isSyncing, setIsSyncing] = useState(false);
+            
+            // クラウドからデータ取得が完了したかを管理する超重要フラグ（データ消滅を防ぐ防壁）
+            const [hasLoaded, setHasLoaded] = useState(false); 
 
-            // --- 🔄 リアルタイム同期（PUTへの修正でバグを完全解消） ---
+            // --- 🔄 クラウド保存（PUT） ---
             const saveToCloud = async (currentMembers, currentRoom) => {
+                if (!hasLoaded || !currentRoom) return; // 🛡️ ロード完了前は絶対に上書きセーブさせない
                 try {
                     setIsSyncing(true);
                     await fetch(`${SYNC_URL}${currentRoom}`, {
-                        method: "PUT", // 👈 命令をPOSTからPUTに修正。これで確実に上書き保存されます
+                        method: "PUT",
                         body: JSON.stringify(currentMembers),
                         headers: { "Content-Type": "application/json" }
                     });
                 } catch (e) {
-                    console.error(e);
+                    console.error("保存失敗:", e);
                 } finally {
                     setIsSyncing(false);
                 }
             };
 
-            const loadFromCloud = async () => {
+            // --- 🔄 クラウド読み込み（GET） ---
+            const loadFromCloud = async (currentRoom) => {
+                if (!currentRoom) return;
                 try {
-                    const res = await fetch(`${SYNC_URL}${roomName}`);
+                    const res = await fetch(`${SYNC_URL}${currentRoom}`);
                     if (res.ok) {
                         const text = await res.text();
                         if (text && text.trim().length > 0) {
@@ -89,23 +94,39 @@
                             }
                         }
                     }
+                    setHasLoaded(true); // 🛡️ データが空であれ存在してあれ、初回の確認が終わったらフラグを立てる
                 } catch (e) {
-                    console.error(e);
+                    console.error("読み込み失敗:", e);
+                    setHasLoaded(true);
                 }
             };
 
-            useEffect(() => {
-                loadFromCloud();
-                const timer = setInterval(() => { loadFromCloud(); }, 3000); // 3秒ごとに自動同期
-                return () => clearInterval(timer);
-            }, [roomName]);
-
-            const changeAndSync = (newMembers) => {
-                setMembers(newMembers);
-                saveToCloud(newMembers, roomName);
+            // 🔑 ログイン処理
+            const handleLogin = (e) => {
+                e.preventDefault();
+                if (!roomName.trim()) {
+                    alert("パスキーを入力してください（例: 0123）");
+                    return;
+                }
+                setIsLoggedIn(true);
             };
 
-            // --- ⚙️ メンバー・目標操作 ---
+            // ログイン成功後、3秒おきの自動同期ループを開始
+            useEffect(() => {
+                if (!isLoggedIn || !roomName) return;
+                loadFromCloud(roomName);
+                const timer = setInterval(() => { loadFromCloud(roomName); }, 3000);
+                return () => clearInterval(timer);
+            }, [isLoggedIn, roomName]);
+
+            // --- ⚙️ データ書き換えトリガー ---
+            const changeAndSync = (newMembers) => {
+                setMembers(newMembers);
+                if (hasLoaded) {
+                    saveToCloud(newMembers, roomName);
+                }
+            };
+
             const addMember = () => {
                 const newId = `user-${Date.now()}`;
                 changeAndSync([...members, createInitialMember(newId, `インターン生${members.length + 1}`, "なし")]);
@@ -218,6 +239,33 @@
                 };
             }, [members]);
 
+            // 🛡️ まだログインしていない場合は「パスキー入力用ログイン画面」を強制表示
+            if (!isLoggedIn) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-gray-950 px-4 select-none">
+                        <form onSubmit={handleLogin} className="w-full max-w-sm bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl space-y-4">
+                            <div className="text-center">
+                                <h1 className="text-xl font-black text-indigo-400">🔑 テレアポ進捗システム</h1>
+                                <p className="text-xs text-gray-400 mt-1">共通のパスキーを入力してログインしてください</p>
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-gray-300">パスキー (数字や文字)</label>
+                                <input 
+                                    type="text" 
+                                    value={roomName}
+                                    onChange={(e) => setRoomName(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
+                                    placeholder="例: 0123"
+                                    className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-center text-xl font-black tracking-widest text-amber-400 outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                            </div>
+                            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-55 text-white font-black py-3 rounded-xl shadow-lg transition tracking-wider text-sm">
+                                同期ルームに入る
+                            </button>
+                        </form>
+                    </div>
+                );
+            }
+
             const currentSelectedMember = members.find(m => m.id === selectedMemberId) || members[0];
 
             return (
@@ -227,7 +275,7 @@
                     <div className="bg-gradient-to-r from-slate-800 via-indigo-950 to-slate-800 p-4 rounded-2xl border border-indigo-500/40 shadow-xl relative">
                         <div className="absolute top-2 right-3 flex items-center gap-1.5 text-[10px] text-gray-400">
                             <span className={`w-2 h-2 rounded-full ${isSyncing ? "bg-amber-400 animate-ping" : "bg-emerald-400"}`}></span>
-                            <span>{isSyncing ? "同期中..." : "リアルタイム画面同期中"}</span>
+                            <span>ルームキー: {roomName}</span>
                         </div>
                         <h2 className="text-center text-xs font-bold text-indigo-400 tracking-widest mb-1.5">📱 本日の全体総進捗 (全員の合計)</h2>
                         
@@ -314,8 +362,10 @@
                                                         const h = m.hourly[term];
                                                         const termApps = APP_KEYS.reduce((sum, k) => sum + h[k], 0);
                                                         const tGoal = m.termGoals[term] || 0;
-                                                        return (
-                                                            <td key={term} className={`p-2 text-center min-w-[110px] ${termApps > 0 ? "bg-emerald-950/15" : ""}`}>
+                                                        return termApps === 0 ? (
+                                                            <td key={term} className="p-2 text-center text-gray-600 font-medium">-</td>
+                                                        ) : (
+                                                            <td key={term} className="p-2 text-center min-w-[110px] bg-emerald-950/20">
                                                                 <div className="text-base font-black text-emerald-400">{termApps} <span className="text-[10px] font-normal text-gray-500">/ {tGoal}A</span></div>
                                                                 <div className="text-[9px] text-gray-400 leading-tight mt-0.5 max-w-[110px] mx-auto text-left pl-2">
                                                                     {h.app_28_connect > 0 && <div>28着:{h.app_28_connect}</div>}
@@ -356,7 +406,7 @@
                         </div>
                     )}
 
-                    {/* ---------------- 📞 タブ2: 行動量・アポ入力（学年の完全平等化） ---------------- */}
+                    {/* ---------------- 📞 タブ2: 行動量・アポ入力（完全平等フラット設計） ---------------- */}
                     {activeTab === "activity" && (
                         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-4 shadow-xl">
                             <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-xl border border-slate-700">
@@ -401,7 +451,7 @@
                                 </div>
                             </div>
 
-                            {/* 🛠️ 行動量累積マトリックス（完全に左右対称・同一サイズのフラット設計） */}
+                            {/* 行動量累積マトリックス（左右50%ずつの完全同一サイズ仕様） */}
                             <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-700 space-y-3">
                                 <div className="text-xs font-black text-indigo-400 border-b border-slate-800 pb-1">📊 1日の行動量（完全累積ポチポチ表）</div>
                                 <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/40">
@@ -422,7 +472,7 @@
                                                 <tr key={row.label}>
                                                     <td className={`p-2 text-left font-black border-r border-slate-800 ${row.color}`}>{row.label}</td>
                                                     
-                                                    {/* 28卒コントローラー（27卒と全く同じ仕様） */}
+                                                    {/* 28卒コントローラー */}
                                                     <td className="p-2 space-y-1.5 border-r border-slate-800">
                                                         <div className="text-lg font-black text-white">{currentSelectedMember[row.k28]} <span className="text-[10px] text-gray-500 font-normal">件</span></div>
                                                         <div className="flex gap-1 justify-center flex-wrap">
@@ -437,7 +487,7 @@
                                                         </div>
                                                     </td>
 
-                                                    {/* 27卒コントローラー（28卒と完全に均等なサイズ・ボタン配置） */}
+                                                    {/* 27卒コントローラー（28卒と完全に均等） */}
                                                     <td className="p-2 space-y-1.5">
                                                         <div className="text-lg font-black text-white">{currentSelectedMember[row.k27]} <span className="text-[10px] text-gray-500 font-normal">件</span></div>
                                                         <div className="flex gap-1 justify-center flex-wrap">
@@ -504,18 +554,9 @@
                         </div>
                     )}
 
-                    {/* ---------------- 🎯 タブ4: 朝一設定（文言の厳格な明記） ---------------- */}
+                    {/* ---------------- 🎯 タブ4: 朝一設定 ---------------- */}
                     {activeTab === "settings" && (
                         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-4 shadow-xl">
-                            
-                            <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-700 space-y-2">
-                                <h3 className="text-xs font-black text-white flex items-center gap-1">🌐 リアルタイム同時画面同期設定</h3>
-                                <div className="flex gap-2 items-center">
-                                    <span className="text-[11px] text-gray-400 whitespace-nowrap">部屋の識別キー:</span>
-                                    <input type="text" value={roomName} onChange={(e) => setRoomName(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))} className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs font-bold text-amber-400 outline-none w-full" />
-                                </div>
-                            </div>
-
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center border-b border-slate-700 pb-1">
                                     <h3 className="text-xs font-black text-white">⚙️ 朝一の目標設定·メンバー管理</h3>
@@ -539,7 +580,6 @@
                                                 </select>
                                             </div>
 
-                                            {/* 📝 ラベルを「朝一の架電数目標」「朝一の予約数目標」に100%厳格化 */}
                                             <div className="grid grid-cols-1 gap-2 bg-slate-950/50 p-2 rounded border border-slate-800">
                                                 <div>
                                                     <label className="block text-[10px] text-indigo-400 font-black mb-1">🎯 朝一の「架電数」目標（1日の総数）</label>
@@ -563,7 +603,6 @@
                                 </div>
                             </div>
 
-                            {/* 進捗一括リセット */}
                             <div className="pt-2 border-t border-slate-700 text-center">
                                 <button onClick={handleResetAll} className="w-full max-w-xs bg-red-700 hover:bg-red-600 text-white font-black text-xs py-2.5 rounded-xl shadow-md transition">
                                     🚨 本日の進捗数値をすべて0にリセット

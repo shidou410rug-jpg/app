@@ -21,6 +21,9 @@
 
         const TERMS = ["11:00-13:00", "13:00-15:00", "15:00-17:00", "17:00-19:00"];
 
+        // アポの経路定義
+        const APP_KEYS = ["app_28_connect", "app_28_callback", "app_27_connect", "app_27_callback", "app_27_sms"];
+
         const initialMembers = [
             {
                 id: "user-1",
@@ -29,7 +32,12 @@
                 goalCalls: 0,
                 goalApps: 0,
                 hourly: TERMS.reduce((acc, term) => {
-                    acc[term] = { apps: 0, calls: 0, connects: 0, callbacks: 0 };
+                    acc[term] = {
+                        app_28_connect: 0, app_28_callback: 0, app_27_connect: 0, app_27_callback: 0, app_27_sms: 0,
+                        calls_28: 0, calls_27: 0,
+                        connects_28: 0, connects_27: 0,
+                        callbacks_28: 0, callbacks_27: 0
+                    };
                     return acc;
                 }, {})
             },
@@ -40,11 +48,50 @@
                 goalCalls: 0,
                 goalApps: 0,
                 hourly: TERMS.reduce((acc, term) => {
-                    acc[term] = { apps: 0, calls: 0, connects: 0, callbacks: 0 };
+                    acc[term] = {
+                        app_28_connect: 0, app_28_callback: 0, app_27_connect: 0, app_27_callback: 0, app_27_sms: 0,
+                        calls_28: 0, calls_27: 0,
+                        connects_28: 0, connects_27: 0,
+                        callbacks_28: 0, callbacks_27: 0
+                    };
                     return acc;
                 }, {})
             }
         ];
+
+        // --- 📊 各マスのアポ入力コンポーネント（独立プルダウン制御用） ---
+        function AppCell({ memberId, term, hourlyData, onProgressChange }) {
+            const [selectedType, setSelectedType] = useState("app_28_connect");
+
+            // そのマスの総アポ数
+            const totalAppsInTerm = APP_KEYS.reduce((sum, k) => sum + hourlyData[k], 0);
+
+            return (
+                <div className="flex flex-col gap-1 bg-slate-900 p-1.5 rounded-lg border border-slate-700 max-w-[135px] mx-auto text-left">
+                    <div className="text-[10px] text-gray-400 font-bold text-center">
+                        計 <span className="text-emerald-400 text-sm font-black">{totalAppsInTerm}</span> A
+                    </div>
+                    {/* 経路プルダウン */}
+                    <select 
+                        value={selectedType} 
+                        onChange={(e) => setSelectedType(e.target.value)}
+                        className="w-full bg-slate-850 border border-slate-600 rounded p-0.5 text-[10px] font-bold text-gray-200 outline-none"
+                    >
+                        <option value="app_28_connect">28卒(着電)</option>
+                        <option value="app_28_callback">28卒(折り返し)</option>
+                        <option value="app_27_connect">27卒(着電)</option>
+                        <option value="app_27_callback">27卒(折り返し)</option>
+                        <option value="app_27_sms">27卒(SMS)</option>
+                    </select>
+                    {/* 増減ボタン */}
+                    <div className="flex items-center justify-between bg-slate-950 px-1 py-0.5 rounded border border-slate-800">
+                        <button onClick={() => onProgressChange(memberId, term, selectedType, -1)} className="w-5 h-5 bg-slate-800 hover:bg-slate-700 rounded text-gray-400 font-black text-xs">-</button>
+                        <span className="font-black text-emerald-400 text-xs">{hourlyData[selectedType]}</span>
+                        <button onClick={() => onProgressChange(memberId, term, selectedType, 1)} className="w-5 h-5 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-black text-xs">+</button>
+                    </div>
+                </div>
+            );
+        }
 
         function App() {
             const [activeTab, setActiveTab] = useState("matrix");
@@ -57,13 +104,12 @@
                 setMembers(prev => [
                     ...prev,
                     {
-                        id: newId,
-                        name: `インターン生${prev.length + 1}`,
-                        buddyGroup: "なし",
-                        goalCalls: 0,
-                        goalApps: 0,
+                        id: newId, name: `インターン生${prev.length + 1}`, buddyGroup: "なし", goalCalls: 0, goalApps: 0,
                         hourly: TERMS.reduce((acc, term) => {
-                            acc[term] = { apps: 0, calls: 0, connects: 0, callbacks: 0 };
+                            acc[term] = {
+                                app_28_connect: 0, app_28_callback: 0, app_27_connect: 0, app_27_callback: 0, app_27_sms: 0,
+                                calls_28: 0, calls_27: 0, connects_28: 0, connects_27: 0, callbacks_28: 0, callbacks_27: 0
+                            };
                             return acc;
                         }, {})
                     }
@@ -79,7 +125,6 @@
                 });
             };
 
-            // --- データ更新 ---
             const updateMemberField = (id, field, value) => {
                 setMembers(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
             };
@@ -101,7 +146,7 @@
                 let totalCalls = 0; let totalApps = 0; let totalConnects = 0; let totalCallbacks = 0;
 
                 const termTotals = TERMS.reduce((acc, term) => {
-                    acc[term] = { apps: 0, calls: 0, connects: 0, callbacks: 0 };
+                    acc[term] = { apps: 0, calls: 0 };
                     return acc;
                 }, {});
 
@@ -110,21 +155,26 @@
                     totalGoalApps += m.goalApps;
                     TERMS.forEach(term => {
                         const h = m.hourly[term];
-                        totalCalls += h.calls; totalApps += h.apps; totalConnects += h.connects; totalCallbacks += h.callbacks;
-                        termTotals[term].calls += h.calls; termTotals[term].apps += h.apps;
-                        termTotals[term].connects += h.connects; termTotals[term].callbacks += h.callbacks;
+                        const termApps = APP_KEYS.reduce((sum, k) => sum + h[k], 0);
+                        
+                        totalApps += termApps;
+                        totalCalls += (h.calls_28 + h.calls_27);
+                        totalConnects += (h.connects_28 + h.connects_27);
+                        totalCallbacks += (h.callbacks_28 + h.callbacks_27);
+
+                        termTotals[term].apps += termApps;
+                        termTotals[term].calls += (h.calls_28 + h.calls_27);
                     });
                 });
 
                 const buddyStats = {};
                 members.forEach(m => {
                     if (!m.buddyGroup || m.buddyGroup === "なし") return;
-                    if (!buddyStats[m.buddyGroup]) buddyStats[m.buddyGroup] = { goalCalls: 0, goalApps: 0, calls: 0, apps: 0 };
+                    if (!buddyStats[m.buddyGroup]) buddyStats[m.buddyGroup] = { goalCalls: 0, goalApps: 0, apps: 0 };
                     buddyStats[m.buddyGroup].goalCalls += m.goalCalls;
                     buddyStats[m.buddyGroup].goalApps += m.goalApps;
                     TERMS.forEach(term => {
-                        buddyStats[m.buddyGroup].calls += m.hourly[term].calls;
-                        buddyStats[m.buddyGroup].apps += m.hourly[term].apps;
+                        buddyStats[m.buddyGroup].apps += APP_KEYS.reduce((sum, k) => sum + m.hourly[term][k], 0);
                     });
                 });
 
@@ -174,44 +224,45 @@
                     {activeTab === "matrix" && (
                         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-2 overflow-hidden shadow-inner">
                             <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse min-w-[700px]">
+                                <table className="w-full text-left border-collapse min-w-[750px]">
                                     <thead>
                                         <tr className="border-b border-slate-700 text-[11px] text-gray-400">
                                             <th className="p-2 sticky left-0 bg-slate-800 z-10 w-28">メンバー</th>
-                                            <th className="p-2 text-center w-36">個人累積・個人レート</th>
+                                            <th className="p-2 text-center w-40">個人累積・個人レート</th>
                                             {TERMS.map(t => <th key={t} className="p-2 text-center text-gray-300 font-medium">{t}</th>)}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-700/50 text-xs">
                                         {members.map(m => {
-                                            const myTotalApps = TERMS.reduce((sum, t) => sum + m.hourly[t].apps, 0);
-                                            const myTotalConnects = TERMS.reduce((sum, t) => sum + m.hourly[t].connects, 0);
-                                            const myTotalCallbacks = TERMS.reduce((sum, t) => sum + m.hourly[t].callbacks, 0);
+                                            // 各指標の個人累積
+                                            const myTotalApps = TERMS.reduce((sum, t) => sum + APP_KEYS.reduce((s, k) => s + m.hourly[t][k], 0), 0);
+                                            const myConnectApps = TERMS.reduce((sum, t) => sum + m.hourly[t].app_28_connect + m.hourly[t].app_27_connect, 0);
+                                            const myCallbackApps = TERMS.reduce((sum, t) => sum + m.hourly[t].app_28_callback + m.hourly[t].app_27_callback, 0);
+                                            const mySmsApps = TERMS.reduce((sum, t) => sum + m.hourly[t].app_27_sms, 0);
+
+                                            const myTotalConnects = TERMS.reduce((sum, t) => sum + m.hourly[t].connects_28 + m.hourly[t].connects_27, 0);
+                                            const myTotalCallbacks = TERMS.reduce((sum, t) => sum + m.hourly[t].callbacks_28 + m.hourly[t].callbacks_27, 0);
+
                                             const bStat = stats.buddies[m.buddyGroup] || { apps:0, goalApps:0 };
 
-                                            // 📈 個人分析レート（分母が0なら0%表示）
-                                            const connectRate = myTotalConnects > 0 ? Math.round((myTotalApps / myTotalConnects) * 100) : 0;
-                                            const callbackRate = myTotalCallbacks > 0 ? Math.round((myTotalApps / myTotalCallbacks) * 100) : 0;
+                                            // 📈 個人限定の各種予約率計算
+                                            const connectRate = myTotalConnects > 0 ? Math.round((myConnectApps / myTotalConnects) * 100) : 0;
+                                            const callbackRate = myTotalCallbacks > 0 ? Math.round((myCallbackApps / myTotalCallbacks) * 100) : 0;
 
                                             return (
                                                 <tr key={m.id} className="hover:bg-slate-750">
                                                     <td className="p-2 font-bold sticky left-0 bg-slate-800 shadow-md z-10">
                                                         <div className="text-white text-sm">{m.name}</div>
-                                                        {m.buddyGroup !== "なし" && <div className="text-[10px] text-purple-400">👥 {m.buddyGroup} ({bStat.apps}/{bStat.goalApps}A)</div>}
+                                                        {m.buddyGroup !== "なし" && <div className="text-[10px] text-purple-400">👥 {bStat.apps}/{bStat.goalApps}A</div>}
                                                     </td>
-                                                    {/* 個人累積 ＆ 各種予約率 */}
-                                                    <td className="p-2 bg-slate-900/20 text-left font-medium space-y-0.5 whitespace-nowrap border-r border-slate-700/30">
-                                                        <div className="flex justify-between text-gray-300"><span>アポ:</span><span className="font-bold text-emerald-400">{myTotalApps} / {m.goalApps}</span></div>
-                                                        <div className="text-[10px] text-amber-400/90 flex justify-between pt-0.5 border-t border-slate-700/50"><span>📞 着電→予約率:</span><span className="font-bold">{connectRate}%</span></div>
-                                                        <div className="text-[10px] text-purple-400/90 flex justify-between"><span>🔄 折返→予約率:</span><span className="font-bold">{callbackRate}%</span></div>
+                                                    <td className="p-2 bg-slate-900/20 text-left text-[11px] font-medium space-y-0.5 whitespace-nowrap border-r border-slate-700/30">
+                                                        <div className="flex justify-between text-gray-300"><span>総アポ:</span><span className="font-bold text-emerald-400">{myTotalApps} / {m.goalApps} <span className="text-[9px] text-gray-500">(SMS:{mySmsApps})</span></span></div>
+                                                        <div className="text-[10px] text-amber-400/90 flex justify-between pt-0.5 border-t border-slate-700/50"><span>📞 着電→予約率:</span><span className="font-bold">{connectRate}% <span className="text-[9px] text-gray-500">({myConnectApps}A)</span></span></div>
+                                                        <div className="text-[10px] text-purple-400/90 flex justify-between"><span>🔄 折返→予約率:</span><span className="font-bold">{callbackRate}% <span className="text-[9px] text-gray-500">({myCallbackApps}A)</span></span></div>
                                                     </td>
                                                     {TERMS.map(term => (
-                                                        <td key={term} className="p-2 text-center min-w-[100px]">
-                                                            <div className="flex items-center justify-between bg-slate-900 px-2 py-1.5 rounded-lg border border-slate-700 max-w-[120px] mx-auto">
-                                                                <button onClick={() => handleProgressChange(m.id, term, "apps", -1)} className="w-6 h-6 bg-slate-800 rounded text-gray-400 font-black text-sm">-</button>
-                                                                <span className="font-black text-emerald-400 text-base">{m.hourly[term].apps}</span>
-                                                                <button onClick={() => handleProgressChange(m.id, term, "apps", 1)} className="w-6 h-6 bg-emerald-600 rounded text-white font-black text-sm">+</button>
-                                                            </div>
+                                                        <td key={term} className="p-2 text-center">
+                                                            <AppCell memberId={m.id} term={term} hourlyData={m.hourly[term]} onProgressChange={handleProgressChange} />
                                                         </td>
                                                     ))}
                                                 </tr>
@@ -240,7 +291,7 @@
                         </div>
                     )}
 
-                    {/* ---------------- 📞 タブ2: 行動量入力ページ (一括増減対応) ---------------- */}
+                    {/* ---------------- 📞 タブ2: 行動量入力ページ (28卒最大化 / 27卒コンパクト) ---------------- */}
                     {activeTab === "activity" && (
                         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-4 shadow-xl">
                             <div className="flex items-center gap-2">
@@ -250,43 +301,64 @@
                                 </select>
                             </div>
 
-                            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
                                 {TERMS.map(term => {
                                     const hData = currentSelectedMember.hourly[term];
                                     return (
-                                        <div key={term} className="bg-slate-900/60 p-3 rounded-xl border border-slate-700 space-y-2">
+                                        <div key={term} className="bg-slate-900/60 p-3 rounded-xl border border-slate-700 space-y-3">
                                             <div className="text-xs font-black text-indigo-400 border-b border-slate-800 pb-1">🕒 {term}</div>
                                             
                                             {[
-                                                { label: "📞 架電数", key: "calls", color: "text-indigo-300", bg:"bg-indigo-950/40" },
-                                                { label: "🤙 着電数", key: "connects", color: "text-amber-400", bg:"bg-amber-950/20" },
-                                                { label: "🔄 折り返し", key: "callbacks", color: "text-purple-400", bg:"bg-purple-950/20" }
-                                            ].map(item => (
-                                                <div key={item.key} className={`flex flex-col lg:flex-row lg:items-center justify-between p-2 rounded-lg ${item.bg} gap-2`}>
-                                                    <div className="flex justify-between items-center lg:w-1/5">
-                                                        <span className={`text-xs font-bold ${item.color}`}>{item.label}</span>
-                                                        <span className="text-base font-black px-2">{hData[item.key]}</span>
-                                                    </div>
-                                                    
-                                                    {/* 🛠️ 誤タップ戻し完全対応の増減パネル */}
-                                                    <div className="flex gap-1 justify-end flex-wrap items-center">
-                                                        {/* マイナス群 */}
-                                                        <div className="flex bg-slate-950/60 rounded-lg p-0.5 border border-slate-800">
-                                                            <button onClick={() => handleProgressChange(selectedMemberId, term, item.key, -50)} className="px-1.5 py-1 text-[10px] text-red-400 hover:text-red-300 font-bold">-50</button>
-                                                            <button onClick={() => handleProgressChange(selectedMemberId, term, item.key, -10)} className="px-1.5 py-1 text-[10px] text-red-400 hover:text-red-300 font-bold">-10</button>
-                                                            <button onClick={() => handleProgressChange(selectedMemberId, term, item.key, -5)} className="px-1.5 py-1 text-[10px] text-red-400 hover:text-red-300 font-bold">-5</button>
-                                                            <button onClick={() => handleProgressChange(selectedMemberId, term, item.key, -1)} className="px-2 py-1 text-xs text-gray-400 font-bold bg-slate-800 rounded">-1</button>
+                                                { label: "架電数", keyCalls: "calls_28", keyCalls27: "calls_27", color: "indigo", bg: "bg-indigo-950/30" },
+                                                { label: "着電数", keyCalls: "connects_28", keyCalls27: "connects_27", color: "amber", bg: "bg-amber-950/15" },
+                                                { label: "折り返し数", keyCalls: "callbacks_28", keyCalls27: "callbacks_27", color: "purple", bg: "bg-purple-950/15" }
+                                            ].map(item => {
+                                                const colorClass = item.color === "indigo" ? "text-indigo-300" : item.color === "amber" ? "text-amber-400" : "text-purple-400";
+                                                const btnBg = item.color === "indigo" ? "bg-indigo-600 hover:bg-indigo-500" : item.color === "amber" ? "bg-amber-600 hover:bg-amber-500" : "bg-purple-600 hover:bg-purple-500";
+
+                                                return (
+                                                    <div key={item.label} className={`p-2.5 rounded-xl ${item.bg} border border-slate-800/60 space-y-3`}>
+                                                        
+                                                        {/* 🔥 28卒（最優先：ボタン最大） */}
+                                                        <div className="space-y-1.5">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className={`text-xs font-black ${colorClass}`}>🔥 28卒 {item.label}</span>
+                                                                <span className="text-lg font-black text-white bg-slate-950/80 px-2 py-0.5 rounded border border-slate-800">{hData[item.keyCalls]}</span>
+                                                            </div>
+                                                            {/* 特大増減コントローラー */}
+                                                            <div className="flex gap-1 justify-end flex-wrap items-center">
+                                                                <div className="flex bg-slate-950/80 rounded-lg p-0.5 border border-slate-800">
+                                                                    <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls, -50)} className="px-2 py-1.5 text-xs text-red-400 font-extrabold hover:text-red-300">-50</button>
+                                                                    <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls, -10)} className="px-2 py-1.5 text-xs text-red-400 font-extrabold hover:text-red-300">-10</button>
+                                                                    <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls, -5)} className="px-2 py-1.5 text-xs text-red-400 font-extrabold hover:text-red-300">-5</button>
+                                                                    <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls, -1)} className="px-2.5 py-1.5 text-xs text-gray-400 font-bold bg-slate-800 rounded shadow">-1</button>
+                                                                </div>
+                                                                <div className="flex bg-slate-950/80 rounded-lg p-0.5 border border-slate-800 gap-0.5">
+                                                                    <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls, 1)} className="px-3.5 py-1.5 bg-slate-700 text-white rounded font-black text-sm shadow">+1</button>
+                                                                    <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls, 5)} className="px-3.5 py-1.5 bg-blue-600 text-white rounded font-black text-sm shadow">+5</button>
+                                                                    <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls, 10)} className="px-3.5 py-1.5 bg-indigo-600 text-white rounded font-black text-sm shadow">+10</button>
+                                                                    <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls, 50)} className="px-3.5 py-1.5 bg-purple-600 text-white rounded font-black text-sm shadow">+50</button>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        {/* プラス群 */}
-                                                        <div className="flex bg-slate-950/60 rounded-lg p-0.5 border border-slate-800 gap-0.5">
-                                                            <button onClick={() => handleProgressChange(selectedMemberId, term, item.key, 1)} className="px-2.5 py-1 bg-slate-700 text-white rounded font-bold text-xs">+1</button>
-                                                            <button onClick={() => handleProgressChange(selectedMemberId, term, item.key, 5)} className="px-2.5 py-1 bg-blue-600 text-white rounded font-bold text-xs">+5</button>
-                                                            <button onClick={() => handleProgressChange(selectedMemberId, term, item.key, 10)} className="px-2.5 py-1 bg-indigo-600 text-white rounded font-bold text-xs">+10</button>
-                                                            <button onClick={() => handleProgressChange(selectedMemberId, term, item.key, 50)} className="px-2.5 py-1 bg-purple-600 text-white rounded font-bold text-xs">+50</button>
+
+                                                        {/* 💤 27卒（非優先：一列コンパクト表示） */}
+                                                        <div className="flex items-center justify-between bg-slate-950/40 p-1.5 rounded-lg border border-slate-800/40 text-[11px] mt-1">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="font-bold text-gray-400">📄 27卒 {item.label}:</span>
+                                                                <span className="font-black text-gray-200 text-xs">{hData[item.keyCalls27]}</span>
+                                                            </div>
+                                                            <div className="flex gap-1 items-center scale-95 origin-right">
+                                                                <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls27, -5)} className="px-1.5 py-0.5 bg-slate-900 text-red-400 rounded hover:bg-slate-850 font-bold">-5</button>
+                                                                <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls27, -1)} className="px-1.5 py-0.5 bg-slate-900 text-gray-400 rounded hover:bg-slate-850 font-bold">-1</button>
+                                                                <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls27, 1)} className="px-2 py-0.5 bg-slate-700 text-white rounded font-bold">+1</button>
+                                                                <button onClick={() => handleProgressChange(selectedMemberId, term, item.keyCalls27, 5)} className="px-2 py-0.5 bg-slate-600 text-white rounded font-bold">+5</button>
+                                                            </div>
                                                         </div>
+
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     );
                                 })}
@@ -300,7 +372,7 @@
                             <div className="flex justify-between items-center border-b border-slate-700 pb-2">
                                 <div>
                                     <h2 className="text-sm font-black text-white">⚙️ 朝一の目標・人数設定</h2>
-                                    <p className="text-[10px] text-gray-400">人数も目標もここから自由に調整できます。</p>
+                                    <p className="text-[10px] text-gray-400">人数、目標、バディペアをここで組みます。</p>
                                 </div>
                                 <button onClick={addMember} className="bg-indigo-600 hover:bg-indigo-50 text-white font-bold text-xs px-3 py-2 rounded-xl flex items-center gap-1 shadow">
                                     ➕ インターン生を追加

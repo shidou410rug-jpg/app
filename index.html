@@ -44,8 +44,9 @@
             }, {})
         });
 
+        // リロード前の初期メンバーをオープン太郎とオープン花子に修正
         const defaultMembers = [
-            createInitialMember("user-1", "山口士十", "バディ1"),
+            createInitialMember("user-1", "オープン太郎", "バディ1"),
             createInitialMember("user-2", "オープン花子", "バディ1")
         ];
 
@@ -252,10 +253,10 @@
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
                             <div className="bg-slate-900 p-2 rounded-xl text-center border-2 border-emerald-500/60 col-span-1 md:col-span-2">
                                 <p className="text-[10px] text-emerald-400 font-black">修正後 総予約数</p>
-                                <p className="text-2xl font-black text-emerald-400">{stats.total.apps} <span className="text-xs font-normal text-gray-500">/ {stats.total.adjustedGoalApps} A</span></p>
+                                <p className="text-2xl font-black text-emerald-400">{stats.total.apps} <span className="text-xs font-normal text-gray-500">/ {stats.total.adjustedGoalApps}</span></p>
                                 <div className="text-[10px] text-gray-400 mt-1 flex justify-center gap-3">
                                     <span>修正後達成率: <b className="text-amber-400 text-xs">{stats.total.adjustedGoalApps > 0 ? Math.round((stats.total.apps / stats.total.adjustedGoalApps) * 100) : 0}%</b></span>
-                                    <span>(朝一目標: {stats.total.initialGoalApps}A / <b className="text-gray-300">{stats.total.initialGoalApps > 0 ? Math.round((stats.total.apps / stats.total.initialGoalApps) * 100) : 0}%</b>)</span>
+                                    <span>(朝一目標: {stats.total.initialGoalApps} / <b className="text-gray-300">{stats.total.initialGoalApps > 0 ? Math.round((stats.total.apps / stats.total.initialGoalApps) * 100) : 0}%</b>)</span>
                                 </div>
                             </div>
                             <div className="bg-slate-900/80 p-2 rounded-xl text-center flex flex-col justify-center">
@@ -324,7 +325,7 @@
                                                     </td>
                                                     <td className="p-2 bg-slate-900/20 text-left text-[11px] font-medium space-y-0.5 whitespace-nowrap border-r border-slate-700/30">
                                                         <div className="flex justify-between text-gray-300"><span>総予約:</span><span className="font-bold text-emerald-400">{myTotalApps} / {myAdjustedGoal} <span className="text-[9px] text-gray-500">({myInitialGoal})</span></span></div>
-                                                        <div className="text-[10px] text-cyan-400 flex justify-between bg-cyan-950/30 px-1 rounded"><span>3日以内比率:</span><span className="font-bold">{rate3Day}% <span>({my3DayApps}A)</span></span></div>
+                                                        <div className="text-[10px] text-cyan-400 flex justify-between bg-cyan-950/30 px-1 rounded"><span>3日以内比率:</span><span className="font-bold">{rate3Day}% <span>({my3DayApps})</span></span></div>
                                                         <div className={`text-[10px] flex justify-between px-1 rounded ${connectRateStr.includes("⚠️") ? "bg-red-950/50 text-red-400 font-bold" : "text-amber-400/90"}`}><span>着電→予約率:</span><span>{connectRateStr} <span className="text-[9px] opacity-60">({myConnectApps}/{myTotalConnects})</span></span></div>
                                                         <div className={`text-[10px] flex justify-between px-1 rounded ${callbackRateStr.includes("⚠️") ? "bg-red-950/50 text-red-400 font-bold" : "text-purple-400/90"}`}><span>折返→予約率:</span><span>{callbackRateStr} <span className="text-[9px] opacity-60">({myCallbackApps}/{myTotalCallbacks})</span></span></div>
                                                     </td>
@@ -336,7 +337,7 @@
                                                             <td key={term} className="p-2 text-center text-gray-600 font-medium">-</td>
                                                         ) : (
                                                             <td key={term} className="p-2 text-center min-w-[110px] bg-emerald-950/20">
-                                                                <div className="text-base font-black text-emerald-400">{termApps} <span className="text-[10px] font-normal text-gray-400">/ {tGoal}A</span></div>
+                                                                <div className="text-base font-black text-emerald-400">{termApps} <span className="text-[10px] font-normal text-gray-400">/ {tGoal}</span></div>
                                                                 <div className="text-[9px] text-gray-400 leading-tight mt-0.5 max-w-[110px] mx-auto text-left pl-2">
                                                                     {h.app_28_connect > 0 && <div>28着:{h.app_28_connect}</div>}
                                                                     {h.app_28_connect_3day > 0 && <div className="text-cyan-400 font-bold">28着(3日):{h.app_28_connect_3day}</div>}
@@ -358,13 +359,13 @@
                                     <tfoot>
                                         <tr className="bg-slate-950 font-bold border-t-2 border-slate-600 text-xs">
                                             <td className="p-3 sticky left-0 bg-slate-950 z-10 text-indigo-400">合計</td>
-                                            <td className="p-3 text-center text-emerald-400 text-sm">{stats.total.apps} / {stats.total.adjustedGoalApps} A</td>
+                                            <td className="p-3 text-center text-emerald-400 text-sm">{stats.total.apps} / {stats.total.adjustedGoalApps}</td>
                                             {TERMS.map(term => {
                                                 const tData = stats.terms[term];
                                                 const rate = tData.adjustedGoalApps > 0 ? Math.round((tData.apps / tData.adjustedGoalApps) * 100) : 0;
                                                 return (
                                                     <td key={term} className="p-3 text-center">
-                                                        <div className="text-emerald-400 text-sm font-black">{tData.apps} / {tData.adjustedGoalApps} A</div>
+                                                        <div className="text-emerald-400 text-sm font-black">{tData.apps} / {tData.adjustedGoalApps}</div>
                                                         <div className="text-[10px] bg-slate-800 text-amber-400 rounded px-1 py-0.5 mt-1 inline-block">達成率:{rate}%</div>
                                                     </td>
                                                 );
@@ -500,12 +501,12 @@
                                                     <div key={term} className="bg-slate-950/60 px-3 py-1.5 rounded-lg border border-slate-850 flex items-center justify-between text-xs">
                                                         <div>
                                                             <div className="text-gray-400 font-bold">{term}</div>
-                                                            <div className="text-[10px] text-gray-500">初期目標: {initialG}A</div>
+                                                            <div className="text-[10px] text-gray-500">初期目標: {initialG}</div>
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             <button onClick={() => adjustTermGoal(m.id, term, -1)} className="w-6 h-6 bg-red-950/80 text-red-400 hover:bg-red-900 rounded font-black border border-red-900/50 flex items-center justify-center">-1</button>
                                                             <div className="w-12 text-center">
-                                                                <span className={`text-base font-black ${diffColor}`}>{currentG}</span><span className="text-[10px] text-gray-500">A</span>
+                                                                <span className={`text-base font-black ${diffColor}`}>{currentG}</span><span className="text-[10px] text-gray-500"></span>
                                                             </div>
                                                             <button onClick={() => adjustTermGoal(m.id, term, 1)} className="w-6 h-6 bg-cyan-950/80 text-cyan-400 hover:bg-cyan-900 rounded font-black border border-cyan-900/50 flex items-center justify-center">+1</button>
                                                         </div>
@@ -572,7 +573,7 @@
                                                     <div className="grid grid-cols-4 gap-1 text-center">
                                                         {TERMS.map(t => (
                                                             <div key={t}>
-                                                                <div className="text-[9px] text-gray-400 scale-90">{t.split('-')[0]}~</div>
+                                                                <div className="text-[9px] text-gray-400 scale-90">~{t.split('-')[1]}</div>
                                                                 <input 
                                                                     type="number" 
                                                                     value={(m.initialTermGoals && m.initialTermGoals[t] === 0) ? "" : (m.initialTermGoals ? m.initialTermGoals[t] : "")} 

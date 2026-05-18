@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TeleProgress アポ進捗</title>
+    <title>テレアポ進捗マトリックス</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
@@ -13,147 +13,265 @@
         input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     </style>
 </head>
-<body class="bg-gray-50 p-4 md:p-8 text-gray-800">
+<body class="bg-gray-900 p-2 md:p-6 text-gray-100 min-h-screen">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useMemo } = React;
 
-        const initialHours = [10, 11, 12, 13, 14, 15, 16, 17];
-        const createEmptyHourly = () =>
-            initialHours.reduce((acc, hour) => {
-                acc[hour] = { calls: 0, apps: 0 };
-                return acc;
-            }, {});
+        // 4つの時間帯（ターム）
+        const TERMS = ["11:00-13:00", "13:00-15:00", "15:00-17:00", "17:00-19:00"];
 
-        const initialUsers = [
-            { id: 'user-me', name: 'あなた（自分）', buddyId: 'user-buddy', goalCalls: 100, goalApps: 3, hourly: createEmptyHourly() },
-            { id: 'user-buddy', name: 'バディ（相方）', buddyId: 'user-me', goalCalls: 120, goalApps: 4, hourly: createEmptyHourly() },
-            { id: 'user-other1', name: 'メンバーC', buddyId: null, goalCalls: 90, goalApps: 2, hourly: createEmptyHourly() },
-            { id: 'user-other2', name: 'メンバーD', buddyId: null, goalCalls: 110, goalApps: 3, hourly: createEmptyHourly() },
-        ];
+        // 初期設定（10人分）
+        const initialMembers = Array.from({ length: 10 }, (_, i) => ({
+            id: `user-${i + 1}`,
+            name: `インターン生${i + 1}`,
+            buddyGroup: i < 2 ? "バディ1" : i < 4 ? "バディ2" : i < 6 ? "バディ3" : "なし", // 初期ペア
+            goalCalls: 80,
+            goalApps: 2,
+            hourly: TERMS.reduce((acc, term) => {
+                acc[term] = { calls: 0, apps: 0 };
+                return acc;
+            }, {})
+        }));
+
+        // サンプルとして最初の2人を「山口」「島田」に
+        initialMembers[0].name = "山口";
+        initialMembers[0].goalApps = 8;
+        initialMembers[1].name = "島田";
+        initialMembers[1].goalApps = 7;
 
         function App() {
-            const [users, setUsers] = useState(initialUsers);
-            const currentUserId = 'user-me';
+            const [activeTab, setActiveTab] = useState("matrix"); // matrix or settings
+            const [members, setMembers] = useState(initialMembers);
 
-            const handleGoalChange = (type, value) => {
-                setUsers(prev => prev.map(user => 
-                    user.id === currentUserId ? { ...user, [type === 'calls' ? 'goalCalls' : 'goalApps']: value } : user
-                ));
+            // --- データ更新ロジック ---
+            const updateMemberField = (id, field, value) => {
+                setMembers(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
             };
 
-            const handleProgressChange = (hour, type, amount) => {
-                setUsers(prev => prev.map(user => {
-                    if (user.id !== currentUserId) return user;
-                    const currentVal = user.hourly[hour][type];
-                    const newVal = Math.max(0, currentVal + amount);
+            const handleProgressChange = (memberId, term, type, amount) => {
+                setMembers(prev => prev.map(m => {
+                    if (m.id !== memberId) return m;
+                    const newVal = Math.max(0, m.hourly[term][type] + amount);
                     return {
-                        ...user,
-                        hourly: { ...user.hourly, [hour]: { ...user.hourly[hour], [type]: newVal } }
+                        ...m,
+                        hourly: { ...m.hourly, [term]: { ...m.hourly[term], [type]: newVal } }
                     };
                 }));
             };
 
+            // --- 自動計算ロジック (useMemo) ---
             const stats = useMemo(() => {
-                const me = users.find(u => u.id === currentUserId);
-                const buddy = users.find(u => u.id === me.buddyId);
+                // 1. 全体合計
+                let totalGoalCalls = 0;
+                let totalGoalApps = 0;
+                let totalActualCalls = 0;
+                let totalActualApps = 0;
 
-                const calcTotal = (user) => Object.values(user.hourly).reduce((acc, curr) => {
-                    acc.calls += curr.calls;
-                    acc.apps += curr.apps;
+                // 2. 時間帯ごとの全体合計
+                const termTotals = TERMS.reduce((acc, term) => {
+                    acc[term] = { calls: 0, apps: 0 };
                     return acc;
-                }, { calls: 0, apps: 0 });
+                }, {});
 
-                const meTotal = calcTotal(me);
-                const buddyTotal = buddy ? calcTotal(buddy) : { calls: 0, apps: 0 };
+                members.forEach(m => {
+                    totalGoalCalls += m.goalCalls;
+                    totalGoalApps += m.goalApps;
+                    
+                    TERMS.forEach(term => {
+                        totalActualCalls += m.hourly[term].calls;
+                        totalActualApps += m.hourly[term].apps;
+                        termTotals[term].calls += m.hourly[term].calls;
+                        termTotals[term].apps += m.hourly[term].apps;
+                    });
+                });
 
-                const allTotal = users.reduce((acc, user) => {
-                    const t = calcTotal(user);
-                    acc.calls += t.calls;
-                    acc.apps += t.apps;
-                    acc.goalCalls += user.goalCalls;
-                    acc.goalApps += user.goalApps;
-                    return acc;
-                }, { calls: 0, apps: 0, goalCalls: 0, goalApps: 0 });
+                // 3. バディごとの集計
+                const buddyStats = {};
+                members.forEach(m => {
+                    if (!m.buddyGroup || m.buddyGroup === "なし") return;
+                    if (!buddyStats[m.buddyGroup]) {
+                        buddyStats[m.buddyGroup] = { goalCalls: 0, goalApps: 0, calls: 0, apps: 0 };
+                    }
+                    buddyStats[m.buddyGroup].goalCalls += m.goalCalls;
+                    buddyStats[m.buddyGroup].goalApps += m.goalApps;
+                    TERMS.forEach(term => {
+                        buddyStats[m.buddyGroup].calls += m.hourly[term].calls;
+                        buddyStats[m.buddyGroup].apps += m.hourly[term].apps;
+                    });
+                });
 
                 return {
-                    me: { goalCalls: me.goalCalls, goalApps: me.goalApps, calls: meTotal.calls, apps: meTotal.apps },
-                    buddy: { goalCalls: me.goalCalls + (buddy?.goalCalls || 0), goalApps: me.goalApps + (buddy?.goalApps || 0), calls: meTotal.calls + buddyTotal.calls, apps: meTotal.apps + buddyTotal.apps },
-                    all: { goalCalls: allTotal.goalCalls, goalApps: allTotal.goalApps, calls: allTotal.calls, apps: allTotal.apps },
-                    rawMe: me
+                    total: { goalCalls: totalGoalCalls, goalApps: totalGoalApps, calls: totalActualCalls, apps: totalActualApps },
+                    terms: termTotals,
+                    buddies: buddyStats
                 };
-            }, [users]);
+            }, [members]);
 
             return (
-                <div className="max-w-5xl mx-auto space-y-6">
-                    <header className="flex justify-between items-center border-b pb-4">
-                        <h1 className="text-xl font-black text-indigo-600">TeleProgress</h1>
-                        <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-3 py-1 rounded-full">{stats.rawMe.name}</span>
-                    </header>
-
-                    {/* ① 個人の目標設定 */}
-                    <section className="bg-white p-4 rounded-xl shadow-sm border">
-                        <h2 className="text-sm font-bold mb-3 text-gray-700">🎯 今日の個人目標を設定</h2>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="block text-xs text-gray-400 font-bold mb-1">目標架電数</label>
-                                <input type="number" value={stats.me.goalCalls} onChange={(e) => handleGoalChange('calls', Number(e.target.value))} className="w-full px-3 py-1.5 border rounded-lg font-semibold text-base focus:ring-2 focus:ring-indigo-500 outline-none" />
+                <div className="max-w-7xl mx-auto space-y-4 pb-12">
+                    
+                    {/* 🏆 一番大きく全体の数字を表示 */}
+                    <div className="bg-gradient-to-r from-indigo-900 to-slate-800 p-4 rounded-2xl border border-indigo-500 shadow-xl text-center">
+                        <h2 className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">📱 本日の全体総進捗 (全員の合計)</h2>
+                        <div className="grid grid-cols-2 gap-2 max-w-md mx-auto">
+                            <div className="bg-slate-900/60 p-2 rounded-xl">
+                                <p className="text-xs text-gray-400">総架電数</p>
+                                <p className="text-2xl font-black text-indigo-400">{stats.total.calls} <span className="text-xs font-normal text-gray-500">/ {stats.total.goalCalls}</span></p>
                             </div>
-                            <div>
-                                <label className="block text-xs text-gray-400 font-bold mb-1">目標アポ数</label>
-                                <input type="number" value={stats.me.goalApps} onChange={(e) => handleGoalChange('apps', Number(e.target.value))} className="w-full px-3 py-1.5 border rounded-lg font-semibold text-base focus:ring-2 focus:ring-indigo-500 outline-none" />
+                            <div className="bg-slate-900/60 p-2 rounded-xl border border-emerald-500/30">
+                                <p className="text-xs text-emerald-400">総アポ数</p>
+                                <p className="text-2xl font-black text-emerald-400">{stats.total.apps} <span className="text-xs font-normal text-gray-500">/ {stats.total.goalApps}</span></p>
                             </div>
                         </div>
-                    </section>
+                    </div>
 
-                    {/* ② 累積表示 */}
-                    <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                            <h3 className="font-bold text-xs text-indigo-900 mb-1">個人 累積</h3>
-                            <p className="text-xs text-indigo-700">架電: <span className="text-xl font-black">{stats.me.calls}</span> / {stats.me.goalCalls}</p>
-                            <p className="text-xs text-indigo-700">アポ: <span className="text-xl font-black text-emerald-600">{stats.me.apps}</span> / {stats.me.goalApps}</p>
-                        </div>
-                        <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
-                            <h3 className="font-bold text-xs text-purple-900 mb-1">バディ 累積 (自動)</h3>
-                            <p className="text-xs text-purple-700">架電: <span className="text-xl font-black">{stats.buddy.calls}</span> / {stats.buddy.goalCalls}</p>
-                            <p className="text-xs text-purple-700">アポ: <span className="text-xl font-black text-emerald-600">{stats.buddy.apps}</span> / {stats.buddy.goalApps}</p>
-                        </div>
-                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                            <h3 className="font-bold text-xs text-blue-900 mb-1">全体 累積 (自動)</h3>
-                            <p className="text-xs text-blue-700">架電: <span className="text-xl font-black">{stats.all.calls}</span> / {stats.all.goalCalls}</p>
-                            <p className="text-xs text-blue-700">アポ: <span className="text-xl font-black text-emerald-600">{stats.all.apps}</span> / {stats.all.goalApps}</p>
-                        </div>
-                    </section>
+                    {/* タブ切り替えボタン */}
+                    <div className="flex bg-slate-800 p-1 rounded-xl w-fit mx-auto border border-slate-700">
+                        <button onClick={() => setActiveTab("matrix")} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${activeTab === "matrix" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"}`}>
+                            📊 進捗入力 (表形式)
+                        </button>
+                        <button onClick={() => setActiveTab("settings")} className={`px-4 py-2 rounded-lg text-xs font-bold transition ${activeTab === "settings" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"}`}>
+                            ⚙️ 目標・バディ設定ページ
+                        </button>
+                    </div>
 
-                    {/* ③ 時間帯別カウンター */}
-                    <section className="bg-white p-4 rounded-xl shadow-sm border space-y-3">
-                        <h2 className="text-sm font-bold text-gray-700">🕒 時間帯別（タップで増減）</h2>
-                        <div className="space-y-2">
-                            {initialHours.map((hour) => {
-                                const data = stats.rawMe.hourly[hour];
-                                return (
-                                    <div key={hour} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg border">
-                                        <div className="font-bold text-gray-600 text-xs">{hour}:00 〜 {hour + 1}:00</div>
-                                        <div className="flex gap-2">
-                                            <div className="flex items-center gap-2 bg-white px-2 py-1 rounded border text-xs">
-                                                <span className="text-gray-400 font-bold">架電</span>
-                                                <button onClick={() => handleProgressChange(hour, 'calls', -1)} className="w-6 h-6 flex items-center justify-center bg-gray-100 rounded font-bold">-</button>
-                                                <span className="w-6 text-center font-bold">{data.calls}</span>
-                                                <button onClick={() => handleProgressChange(hour, 'calls', 1)} className="w-6 h-6 flex items-center justify-center bg-indigo-600 text-white rounded font-bold">+</button>
-                                            </div>
-                                            <div className="flex items-center gap-2 bg-white px-2 py-1 rounded border text-xs">
-                                                <span className="text-emerald-500 font-bold">アポ</span>
-                                                <button onClick={() => handleProgressChange(hour, 'apps', -1)} className="w-6 h-6 flex items-center justify-center bg-gray-100 rounded font-bold">-</button>
-                                                <span className="w-6 text-center font-bold text-emerald-600">{data.apps}</span>
-                                                <button onClick={() => handleProgressChange(hour, 'apps', 1)} className="w-6 h-6 flex items-center justify-center bg-emerald-600 text-white rounded font-bold">+</button>
-                                            </div>
+                    {/* ---------------- 進捗入力ページ ---------------- */}
+                    {activeTab === "matrix" && (
+                        <div className="bg-slate-800 rounded-2xl border border-slate-700 p-2 shadow-inner overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse min-w-[700px]">
+                                    <thead>
+                                        <tr className="border-b border-slate-700 text-[11px] text-gray-400">
+                                            <th className="p-2 w-32 sticky left-0 bg-slate-800 z-10">メンバー (バディ)</th>
+                                            <th className="p-2 w-24 text-center">個人累積 / 目標</th>
+                                            {TERMS.map(t => <th key={t} className="p-2 text-center bg-slate-800/50">{t}</th>)}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-700/50 text-xs">
+                                        {members.map(m => {
+                                            // 個人累積の計算
+                                            const myTotalCalls = TERMS.reduce((sum, t) => sum + m.hourly[t].calls, 0);
+                                            const myTotalApps = TERMS.reduce((sum, t) => sum + m.hourly[t].apps, 0);
+                                            const bStat = stats.buddies[m.buddyGroup] || { calls:0, apps:0, goalCalls:0, goalApps:0 };
+
+                                            return (
+                                                <tr key={m.id} className="hover:bg-slate-750 transition">
+                                                    {/* 名前・バディ表示 */}
+                                                    <td className="p-2 font-bold sticky left-0 bg-slate-800 shadow-md z-10">
+                                                        <div className="text-white">{m.name}</div>
+                                                        {m.buddyGroup !== "なし" && (
+                                                            <div className="text-[10px] text-purple-400 font-medium">
+                                                                👥 {m.buddyGroup} ({bStat.apps}/{bStat.goalApps}A)
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    {/* 個人累積 */}
+                                                    <td className="p-2 text-center whitespace-nowrap bg-slate-900/30">
+                                                        <div className="text-gray-300">📞 {myTotalCalls} / {m.goalCalls}</div>
+                                                        <div className="text-emerald-400 font-bold">🎯 {myTotalApps} / {m.goalApps}</div>
+                                                    </td>
+                                                    {/* 時間帯ごとのセル */}
+                                                    {TERMS.map(term => {
+                                                        const data = m.hourly[term];
+                                                        return (
+                                                            <td key={term} className="p-2 text-center bg-slate-900/10 min-w-[120px]">
+                                                                <div className="flex flex-col gap-1 items-center justify-center">
+                                                                    {/* 架電カウンター */}
+                                                                    <div className="flex items-center gap-1.5 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700 w-full justify-between">
+                                                                        <span className="text-[10px] text-gray-500 font-bold scale-90">📞</span>
+                                                                        <button onClick={() => handleProgressChange(m.id, term, "calls", -1)} className="w-5 h-5 bg-slate-800 hover:bg-slate-700 rounded text-gray-400 font-bold text-xs">-</button>
+                                                                        <span className="font-bold min-w-[14px] text-indigo-300 text-xs">{data.calls}</span>
+                                                                        <button onClick={() => handleProgressChange(m.id, term, "calls", 1)} className="w-5 h-5 bg-indigo-700 hover:bg-indigo-600 rounded text-white font-bold text-xs">+</button>
+                                                                    </div>
+                                                                    {/* アポカウンター */}
+                                                                    <div className="flex items-center gap-1.5 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700 w-full justify-between">
+                                                                        <span className="text-[10px] text-emerald-500 font-bold scale-90">🎯</span>
+                                                                        <button onClick={() => handleProgressChange(m.id, term, "apps", -1)} className="w-5 h-5 bg-slate-800 hover:bg-slate-700 rounded text-gray-400 font-bold text-xs">-</button>
+                                                                        <span className="font-bold min-w-[14px] text-emerald-400 text-xs">{data.apps}</span>
+                                                                        <button onClick={() => handleProgressChange(m.id, term, "apps", 1)} className="w-5 h-5 bg-emerald-600 hover:bg-emerald-500 rounded text-white font-bold text-xs">+</button>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    {/* 📈 下に、時間ごとの達成率（合計として記載） */}
+                                    <tfoot>
+                                        <tr className="bg-slate-900/80 font-bold border-t-2 border-slate-600 text-xs">
+                                            <td className="p-3 sticky left-0 bg-slate-950 z-10 text-indigo-400">⏰ 全員合計</td>
+                                            <td className="p-3 text-center text-gray-400">全員の総和</td>
+                                            {TERMS.map(term => {
+                                                const tData = stats.terms[term];
+                                                // 1タームあたりの目標基準（全体目標 / 4ターム）
+                                                const termGoalApps = stats.total.goalApps / 4;
+                                                const rate = termGoalApps > 0 ? Math.round((tData.apps / termGoalApps) * 100) : 0;
+
+                                                return (
+                                                    <td key={term} className="p-3 text-center bg-slate-950/40">
+                                                        <div className="text-indigo-300">📞 {tData.calls} 件</div>
+                                                        <div className="text-emerald-400 text-sm font-black">🎯 {tData.apps} アポ</div>
+                                                        <div className="text-[10px] bg-slate-800 text-amber-400 rounded px-1 py-0.5 mt-1 inline-block border border-amber-500/20">
+                                                            達成率: {rate}%
+                                                        </div>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ---------------- 🎯 目標・バディ設定ページ ---------------- */}
+                    {activeTab === "settings" && (
+                        <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-4 shadow-xl">
+                            <div>
+                                <h2 className="text-base font-black text-white">⚙️ メンバー名・目標・バディの初期設定</h2>
+                                <p className="text-xs text-gray-400 mt-0.5">朝一にここで固定すると、進捗入力ページに自動計算で連動します。</p>
+                            </div>
+                            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                                {members.map((m, index) => (
+                                    <div key={m.id} className="grid grid-cols-12 gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-700 items-center">
+                                        <div className="col-span-1 text-xs text-gray-500 font-bold">#{index + 1}</div>
+                                        {/* 名前変更 */}
+                                        <div className="col-span-4">
+                                            <input type="text" value={m.name} onChange={(e) => updateMemberField(m.id, "name", e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2 py-1 text-xs font-bold text-white focus:ring-1 focus:ring-indigo-500 outline-none" placeholder="名前" />
+                                        </div>
+                                        {/* バディ選択 */}
+                                        <div className="col-span-3">
+                                            <select value={m.buddyGroup} onChange={(e) => updateMemberField(m.id, "buddyGroup", e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-1 py-1 text-[11px] font-bold text-purple-300 focus:ring-1 focus:ring-indigo-500 outline-none">
+                                                <option value="なし">バディなし</option>
+                                                <option value="バディ1">バディ1</option>
+                                                <option value="バディ2">バディ2</option>
+                                                <option value="バディ3">バディ3</option>
+                                                <option value="バディ4">バディ4</option>
+                                                <option value="バディ5">バディ5</option>
+                                            </select>
+                                        </div>
+                                        {/* 目標架電 */}
+                                        <div className="col-span-2">
+                                            <input type="number" value={m.goalCalls} onChange={(e) => updateMemberField(m.id, "goalCalls", Number(e.target.value))} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-1 py-1 text-xs text-center text-indigo-300 font-bold" placeholder="📞目標" />
+                                        </div>
+                                        {/* 目標アポ */}
+                                        <div className="col-span-2">
+                                            <input type="number" value={m.goalApps} onChange={(e) => updateMemberField(m.id, "goalApps", Number(e.target.value))} className="w-full bg-slate-800 border border-slate-600 rounded-lg px-1 py-1 text-xs text-center text-emerald-400 font-bold" placeholder="🎯目標" />
                                         </div>
                                     </div>
-                                );
-                            })}
+                                ))}
+                            </div>
+                            <div className="text-center">
+                                <button onClick={() => setActiveTab("matrix")} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-lg transition">
+                                    設定を完了して表に戻る
+                                </button>
+                            </div>
                         </div>
-                    </section>
+                    )}
                 </div>
             );
         }

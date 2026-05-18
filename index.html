@@ -28,8 +28,8 @@
             "app_27_sms"
         ];
 
-        // 🔑 確実に通信が通り、データ保持ができる正規バケットURL
-        const SYNC_URL = "https://kvdb.io/MN86yvU67wUshH9pZpLgS6/shidou415_";
+        // 🔑 あなたが発行した専用スプレッドシート通信URLを完全に組み込みました
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwjgiyA_tilaCkNctcAVUWupQCnANVTEFGr4LpI57LV0kMgo_hg3t3qedbgQSnsjLdu/exec";
 
         const createInitialMember = (id, name, buddy) => ({
             id, name, buddyGroup: buddy,
@@ -46,144 +46,74 @@
         });
 
         const defaultMembers = [
-            createInitialMember("user-1", "オープン太郎", "バディ1"),
+            createInitialMember("user-1", "山口士十", "バディ1"),
             createInitialMember("user-2", "オープン花子", "バディ1")
         ];
 
         function App() {
-            const [isLoggedIn, setIsLoggedIn] = useState(false);
-            const [roomName, setRoomName] = useState("");        
             const [activeTab, setActiveTab] = useState("matrix");
             const [members, setMembers] = useState(defaultMembers);
             const [selectedMemberId, setSelectedMemberId] = useState("user-1");
             const [selectedTerm, setSelectedTerm] = useState("11:00-13:00");
             const [selectedAppType, setSelectedAppType] = useState("app_28_connect");
             const [isSyncing, setIsSyncing] = useState(false);
-            const [isLoading, setIsLoading] = useState(false);
             const [hasLoaded, setHasLoaded] = useState(false); 
 
-            // 設定ページ用のローカル一時状態（タイピング通信乱打を防ぐ防壁）
             const [localMembers, setLocalMembers] = useState([]);
-
-            // 逆流防止用の最終書き込みタイムスタンプ参照
             const lastSavedRef = useRef(0);
 
-            // --- 🔄 クラウド保存（PUT） ---
-            const saveToCloud = async (currentMembers, currentRoom) => {
-                if (!hasLoaded || !currentRoom) return; 
+            // --- 🔄 Googleスプレッドシートへ保存 ---
+            const saveToCloud = async (currentMembers) => {
+                if (!hasLoaded || !GOOGLE_SCRIPT_URL) return; 
                 lastSavedRef.current = Date.now(); 
-                
-                // 🛡️ 【検証による追加】クラウドに送ると同時に、スマホの内部メモリ（ローカルストレージ）にも即時バックアップ
-                localStorage.setItem("telepro_db_" + currentRoom, JSON.stringify(currentMembers));
-                
                 try {
                     setIsSyncing(true);
-                    await fetch(`${SYNC_URL}${currentRoom}`, {
-                        method: "PUT",
-                        body: JSON.stringify(currentMembers),
-                        headers: { "Content-Type": "application/json" }
+                    await fetch(GOOGLE_SCRIPT_URL, {
+                        method: "POST",
+                        body: JSON.stringify(currentMembers)
                     });
                 } catch (e) {
-                    console.error("保存エラー:", e);
+                    console.error("Google保存エラー:", e);
                 } finally {
                     setIsSyncing(false);
                 }
             };
 
-            // --- 🔄 クラウド読み込み（GET） ---
-            const loadFromCloud = async (currentRoom) => {
-                if (!currentRoom || !hasLoaded) return;
-                if (Date.now() - lastSavedRef.current < 7000) return; // 入力直後7秒間は同期による上書きをロック
+            // --- 🔄 Googleスプレッドシートから読み込み ---
+            const loadFromCloud = async () => {
+                if (!GOOGLE_SCRIPT_URL) return;
+                if (Date.now() - lastSavedRef.current < 6000) return; 
                 try {
-                    const res = await fetch(`${SYNC_URL}${currentRoom}`);
+                    const res = await fetch(GOOGLE_SCRIPT_URL);
                     if (res.ok) {
-                        const text = await res.text();
-                        if (text && text.trim().length > 0 && text !== "null") {
-                            const data = JSON.parse(text);
-                            if (data && Array.isArray(data) && data.length > 0) {
-                                setMembers(data);
-                                // スマホ内蔵メモリのバックアップも最新に更新
-                                localStorage.setItem("telepro_db_" + currentRoom, text);
-                            }
+                        const data = await res.json();
+                        if (data && Array.isArray(data) && data.length > 0) {
+                            setMembers(data);
+                            setHasLoaded(true);
+                        } else if (data && Array.isArray(data) && data.length === 0 && !hasLoaded) {
+                            setHasLoaded(true);
+                            // スプシ側が完全に空っぽの初回のみ、山口士十さん達の初期データを流し込む
+                            saveToCloud(defaultMembers);
                         }
                     }
                 } catch (e) {
-                    console.error("自動同期エラー:", e);
+                    console.error("Google読み込みエラー:", e);
                 }
             };
 
-            // 🔑 ログインボタンを押した瞬間の「最優先ロード処理」
-            const handleLogin = async (e) => {
-                e.preventDefault();
-                const trimmed = roomName.trim();
-                if (!trimmed) {
-                    alert("パスキーを入力してください（例: 0519）");
-                    return;
-                }
-                setIsLoading(true);
-                
-                // 🛡️ 【検証による追加】ログインした1番最初の0.0秒に、まずはスマホ自身が覚えている前回のデータを一瞬で復元
-                const localBackup = localStorage.getItem("telepro_db_" + trimmed);
-                if (localBackup) {
-                    try {
-                        const parsed = JSON.parse(localBackup);
-                        if (Array.isArray(parsed) && parsed.length > 0) {
-                            setMembers(parsed);
-                        }
-                    } catch(err) { console.error(err); }
-                }
-                
-                try {
-                    // 2. その後、クラウドに最新データを取りに行く
-                    const res = await fetch(`${SYNC_URL}${trimmed}`);
-                    let cloudDataExists = false;
-                    if (res.ok) {
-                        const text = await res.text();
-                        if (text && text.trim().length > 0 && text !== "null") {
-                            const data = JSON.parse(text);
-                            if (data && Array.isArray(data) && data.length > 0) {
-                                setMembers(data); // クラウドに最新データがあればそちらを最終正装とする
-                                localStorage.setItem("telepro_db_" + trimmed, text);
-                                cloudDataExists = true;
-                            }
-                        }
-                    }
-                    
-                    // まだ誰も作っていない完全新規パスキー、かつスマホにもバックアップがない場合のみ初期データを配置
-                    if (!cloudDataExists && !localBackup) {
-                        await fetch(`${SYNC_URL}${trimmed}`, {
-                            method: "PUT",
-                            body: JSON.stringify(defaultMembers),
-                            headers: { "Content-Type": "application/json" }
-                        });
-                        setMembers(defaultMembers);
-                        localStorage.setItem("telepro_db_" + trimmed, JSON.stringify(defaultMembers));
-                    }
-                    
-                    setHasLoaded(true);
-                    setIsLoggedIn(true);
-                } catch(err) {
-                    console.error(err);
-                    // 万が一通信エラー（404や電波障害）が起きても、スマホにバックアップが残っていればそのまま中に入れる仕様に
-                    if (localBackup) {
-                        setHasLoaded(true);
-                        setIsLoggedIn(true);
-                    } else {
-                        alert("同期データの接続に失敗しました。電波環境の良い場所でお試しください。");
-                    }
-                } finally {
-                    setIsLoading(false);
-                }
-            };
-
-            // 自動同期ループ（3秒ごと）
             useEffect(() => {
-                if (!isLoggedIn || !roomName) return;
-                const timer = setInterval(() => { loadFromCloud(roomName); }, 3000);
+                loadFromCloud();
+                const timer = setInterval(() => {
+                    loadFromCloud();
+                }, 4000); // 4秒おきに自動でスプシの最新データを全員に同期
                 return () => clearInterval(timer);
-            }, [isLoggedIn, roomName]);
+            }, [hasLoaded]);
 
-            // タブ変更時に設定データを退避
+            const changeAndSync = (newMembers) => {
+                setMembers(newMembers);
+                saveToCloud(newMembers);
+            };
+
             const handleTabChange = (tab) => {
                 setActiveTab(tab);
                 if (tab === "settings") {
@@ -191,17 +121,9 @@
                 }
             };
 
-            const changeAndSync = (newMembers) => {
-                setMembers(newMembers);
-                if (hasLoaded) {
-                    saveToCloud(newMembers, roomName);
-                }
-            };
-
-            // 朝一設定ページの「確定保存ボタン」トリガー
             const handleSaveSettings = () => {
                 changeAndSync(localMembers);
-                alert("メンバー·目標設定を保存し、全体へ同期しました！");
+                alert("目標・メンバー設定をスプレッドシートへ保存しました！リロードしても絶対に消えません。");
                 setActiveTab("matrix");
             };
 
@@ -319,33 +241,6 @@
                 };
             }, [members]);
 
-            if (!isLoggedIn) {
-                return (
-                    <div className="min-h-screen flex items-center justify-center bg-gray-950 px-4 select-none">
-                        <form onSubmit={handleLogin} className="w-full max-w-sm bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl space-y-4">
-                            <div className="text-center">
-                                <h1 className="text-xl font-black text-indigo-400">🔑 テレアポ進捗システム</h1>
-                                <p className="text-xs text-gray-400 mt-1">共通のパスキーを入力してログインしてください</p>
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-bold text-gray-300">パスキー (数字または英字)</label>
-                                <input 
-                                    type="text" 
-                                    value={roomName}
-                                    onChange={(e) => setRoomName(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
-                                    placeholder="例: 0519"
-                                    disabled={isLoading}
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-center text-xl font-black tracking-widest text-amber-400 outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
-                                />
-                            </div>
-                            <button type="submit" disabled={isLoading} className="w-full bg-indigo-600 hover:bg-indigo-55 text-white font-black py-3 rounded-xl shadow-lg transition tracking-wider text-sm flex items-center justify-center">
-                                {isLoading ? "同期データ接続中..." : "同期ルームに入る"}
-                            </button>
-                        </form>
-                    </div>
-                );
-            }
-
             const currentSelectedMember = members.find(m => m.id === selectedMemberId) || members[0];
 
             return (
@@ -355,7 +250,7 @@
                     <div className="bg-gradient-to-r from-slate-800 via-indigo-950 to-slate-800 p-4 rounded-2xl border border-indigo-500/40 shadow-xl relative">
                         <div className="absolute top-2 right-3 flex items-center gap-1.5 text-[10px] text-gray-400">
                             <span className={`w-2 h-2 rounded-full ${isSyncing ? "bg-amber-400 animate-ping" : "bg-emerald-400"}`}></span>
-                            <span>ルームキー: {roomName}</span>
+                            <span>📊 Googleスプレッドシート完全同期中</span>
                         </div>
                         <h2 className="text-center text-xs font-bold text-indigo-400 tracking-widest mb-1.5">📱 本日の全体総進捗 (全員の合計)</h2>
                         
@@ -446,7 +341,7 @@
                                                             <td key={term} className="p-2 text-center text-gray-600 font-medium">-</td>
                                                         ) : (
                                                             <td key={term} className="p-2 text-center min-w-[110px] bg-emerald-950/20">
-                                                                <div className="text-base font-black text-emerald-400">{termApps} <span className="text-[10px] font-normal text-gray-400">/ {tGoal}A</span></div>
+                                                                <div className="text-base font-black text-emerald-400">{termApps} <span className="text-[10px] font-normal text-gray-500">/ {tGoal}A</span></div>
                                                                 <div className="text-[9px] text-gray-400 leading-tight mt-0.5 max-w-[110px] mx-auto text-left pl-2">
                                                                     {h.app_28_connect > 0 && <div>28着:{h.app_28_connect}</div>}
                                                                     {h.app_28_connect_3day > 0 && <div className="text-cyan-400 font-bold">28着(3日):{h.app_28_connect_3day}</div>}
@@ -531,7 +426,7 @@
                                 </div>
                             </div>
 
-                            {/* 行動量累積マトリックス（左右対称の完全対等設計） */}
+                            {/* 行動量マトリックス（左右対称の完全対等設計） */}
                             <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-700 space-y-3">
                                 <div className="text-xs font-black text-indigo-400 border-b border-slate-800 pb-1">📊 1日の行動量（完全累積ポチポチ表）</div>
                                 <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/40">
@@ -637,6 +532,7 @@
                     {/* ---------------- 🎯 タブ4: 朝一設定 ---------------- */}
                     {activeTab === "settings" && (
                         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-4 shadow-xl">
+                            
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center border-b border-slate-700 pb-1">
                                     <h3 className="text-xs font-black text-white">⚙️ 朝一の目標設定·メンバー管理</h3>
@@ -706,7 +602,7 @@
                                 </div>
                             </div>
 
-                            {/* 一発確定ボタン */}
+                            {/* 一発確定保存ボタン */}
                             <div className="pt-2 text-center space-y-4">
                                 <button onClick={handleSaveSettings} className="w-full max-w-md bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs py-3.5 rounded-xl shadow-xl transition tracking-widest">
                                     💾 この設定で朝一の目標を確定して保存する

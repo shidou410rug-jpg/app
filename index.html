@@ -1,1 +1,165 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TeleProgress アポ進捗</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
+</head>
+<body class="bg-gray-50 p-4 md:p-8 text-gray-800">
+    <div id="root"></div>
 
+    <script type="text/babel">
+        const { useState, useMemo } = React;
+
+        const initialHours = [10, 11, 12, 13, 14, 15, 16, 17];
+        const createEmptyHourly = () =>
+            initialHours.reduce((acc, hour) => {
+                acc[hour] = { calls: 0, apps: 0 };
+                return acc;
+            }, {});
+
+        const initialUsers = [
+            { id: 'user-me', name: 'あなた（自分）', buddyId: 'user-buddy', goalCalls: 100, goalApps: 3, hourly: createEmptyHourly() },
+            { id: 'user-buddy', name: 'バディ（相方）', buddyId: 'user-me', goalCalls: 120, goalApps: 4, hourly: createEmptyHourly() },
+            { id: 'user-other1', name: 'メンバーC', buddyId: null, goalCalls: 90, goalApps: 2, hourly: createEmptyHourly() },
+            { id: 'user-other2', name: 'メンバーD', buddyId: null, goalCalls: 110, goalApps: 3, hourly: createEmptyHourly() },
+        ];
+
+        function App() {
+            const [users, setUsers] = useState(initialUsers);
+            const currentUserId = 'user-me';
+
+            const handleGoalChange = (type, value) => {
+                setUsers(prev => prev.map(user => 
+                    user.id === currentUserId ? { ...user, [type === 'calls' ? 'goalCalls' : 'goalApps']: value } : user
+                ));
+            };
+
+            const handleProgressChange = (hour, type, amount) => {
+                setUsers(prev => prev.map(user => {
+                    if (user.id !== currentUserId) return user;
+                    const currentVal = user.hourly[hour][type];
+                    const newVal = Math.max(0, currentVal + amount);
+                    return {
+                        ...user,
+                        hourly: { ...user.hourly, [hour]: { ...user.hourly[hour], [type]: newVal } }
+                    };
+                }));
+            };
+
+            const stats = useMemo(() => {
+                const me = users.find(u => u.id === currentUserId);
+                const buddy = users.find(u => u.id === me.buddyId);
+
+                const calcTotal = (user) => Object.values(user.hourly).reduce((acc, curr) => {
+                    acc.calls += curr.calls;
+                    acc.apps += curr.apps;
+                    return acc;
+                }, { calls: 0, apps: 0 });
+
+                const meTotal = calcTotal(me);
+                const buddyTotal = buddy ? calcTotal(buddy) : { calls: 0, apps: 0 };
+
+                const allTotal = users.reduce((acc, user) => {
+                    const t = calcTotal(user);
+                    acc.calls += t.calls;
+                    acc.apps += t.apps;
+                    acc.goalCalls += user.goalCalls;
+                    acc.goalApps += user.goalApps;
+                    return acc;
+                }, { calls: 0, apps: 0, goalCalls: 0, goalApps: 0 });
+
+                return {
+                    me: { goalCalls: me.goalCalls, goalApps: me.goalApps, calls: meTotal.calls, apps: meTotal.apps },
+                    buddy: { goalCalls: me.goalCalls + (buddy?.goalCalls || 0), goalApps: me.goalApps + (buddy?.goalApps || 0), calls: meTotal.calls + buddyTotal.calls, apps: meTotal.apps + buddyTotal.apps },
+                    all: { goalCalls: allTotal.goalCalls, goalApps: allTotal.goalApps, calls: allTotal.calls, apps: allTotal.apps },
+                    rawMe: me
+                };
+            }, [users]);
+
+            return (
+                <div className="max-w-5xl mx-auto space-y-6">
+                    <header className="flex justify-between items-center border-b pb-4">
+                        <h1 className="text-xl font-black text-indigo-600">TeleProgress</h1>
+                        <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-3 py-1 rounded-full">{stats.rawMe.name}</span>
+                    </header>
+
+                    {/* ① 個人の目標設定 */}
+                    <section className="bg-white p-4 rounded-xl shadow-sm border">
+                        <h2 className="text-sm font-bold mb-3 text-gray-700">🎯 今日の個人目標を設定</h2>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-xs text-gray-400 font-bold mb-1">目標架電数</label>
+                                <input type="number" value={stats.me.goalCalls} onChange={(e) => handleGoalChange('calls', Number(e.target.value))} className="w-full px-3 py-1.5 border rounded-lg font-semibold text-base focus:ring-2 focus:ring-indigo-500 outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-400 font-bold mb-1">目標アポ数</label>
+                                <input type="number" value={stats.me.goalApps} onChange={(e) => handleGoalChange('apps', Number(e.target.value))} className="w-full px-3 py-1.5 border rounded-lg font-semibold text-base focus:ring-2 focus:ring-indigo-500 outline-none" />
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* ② 累積表示 */}
+                    <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                            <h3 className="font-bold text-xs text-indigo-900 mb-1">個人 累積</h3>
+                            <p className="text-xs text-indigo-700">架電: <span className="text-xl font-black">{stats.me.calls}</span> / {stats.me.goalCalls}</p>
+                            <p className="text-xs text-indigo-700">アポ: <span className="text-xl font-black text-emerald-600">{stats.me.apps}</span> / {stats.me.goalApps}</p>
+                        </div>
+                        <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
+                            <h3 className="font-bold text-xs text-purple-900 mb-1">バディ 累積 (自動)</h3>
+                            <p className="text-xs text-purple-700">架電: <span className="text-xl font-black">{stats.buddy.calls}</span> / {stats.buddy.goalCalls}</p>
+                            <p className="text-xs text-purple-700">アポ: <span className="text-xl font-black text-emerald-600">{stats.buddy.apps}</span> / {stats.buddy.goalApps}</p>
+                        </div>
+                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                            <h3 className="font-bold text-xs text-blue-900 mb-1">全体 累積 (自動)</h3>
+                            <p className="text-xs text-blue-700">架電: <span className="text-xl font-black">{stats.all.calls}</span> / {stats.all.goalCalls}</p>
+                            <p className="text-xs text-blue-700">アポ: <span className="text-xl font-black text-emerald-600">{stats.all.apps}</span> / {stats.all.goalApps}</p>
+                        </div>
+                    </section>
+
+                    {/* ③ 時間帯別カウンター */}
+                    <section className="bg-white p-4 rounded-xl shadow-sm border space-y-3">
+                        <h2 className="text-sm font-bold text-gray-700">🕒 時間帯別（タップで増減）</h2>
+                        <div className="space-y-2">
+                            {initialHours.map((hour) => {
+                                const data = stats.rawMe.hourly[hour];
+                                return (
+                                    <div key={hour} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg border">
+                                        <div className="font-bold text-gray-600 text-xs">{hour}:00 〜 {hour + 1}:00</div>
+                                        <div className="flex gap-2">
+                                            <div className="flex items-center gap-2 bg-white px-2 py-1 rounded border text-xs">
+                                                <span className="text-gray-400 font-bold">架電</span>
+                                                <button onClick={() => handleProgressChange(hour, 'calls', -1)} className="w-6 h-6 flex items-center justify-center bg-gray-100 rounded font-bold">-</button>
+                                                <span className="w-6 text-center font-bold">{data.calls}</span>
+                                                <button onClick={() => handleProgressChange(hour, 'calls', 1)} className="w-6 h-6 flex items-center justify-center bg-indigo-600 text-white rounded font-bold">+</button>
+                                            </div>
+                                            <div className="flex items-center gap-2 bg-white px-2 py-1 rounded border text-xs">
+                                                <span className="text-emerald-500 font-bold">アポ</span>
+                                                <button onClick={() => handleProgressChange(hour, 'apps', -1)} className="w-6 h-6 flex items-center justify-center bg-gray-100 rounded font-bold">-</button>
+                                                <span className="w-6 text-center font-bold text-emerald-600">{data.apps}</span>
+                                                <button onClick={() => handleProgressChange(hour, 'apps', 1)} className="w-6 h-6 flex items-center justify-center bg-emerald-600 text-white rounded font-bold">+</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </section>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

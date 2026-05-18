@@ -28,7 +28,6 @@
             "app_27_sms"
         ];
 
-        // 🔑 あなたが発行した専用スプレッドシート通信URLを完全に組み込みました
         const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwjgiyA_tilaCkNctcAVUWupQCnANVTEFGr4LpI57LV0kMgo_hg3t3qedbgQSnsjLdu/exec";
 
         const createInitialMember = (id, name, buddy) => ({
@@ -62,7 +61,6 @@
             const [localMembers, setLocalMembers] = useState([]);
             const lastSavedRef = useRef(0);
 
-            // --- 🔄 Googleスプレッドシートへ保存 ---
             const saveToCloud = async (currentMembers) => {
                 if (!hasLoaded || !GOOGLE_SCRIPT_URL) return; 
                 lastSavedRef.current = Date.now(); 
@@ -73,13 +71,12 @@
                         body: JSON.stringify(currentMembers)
                     });
                 } catch (e) {
-                    console.error("Google保存エラー:", e);
+                    console.error(e);
                 } finally {
                     setIsSyncing(false);
                 }
             };
 
-            // --- 🔄 Googleスプレッドシートから読み込み ---
             const loadFromCloud = async () => {
                 if (!GOOGLE_SCRIPT_URL) return;
                 if (Date.now() - lastSavedRef.current < 6000) return; 
@@ -92,12 +89,11 @@
                             setHasLoaded(true);
                         } else if (data && Array.isArray(data) && data.length === 0 && !hasLoaded) {
                             setHasLoaded(true);
-                            // スプシ側が完全に空っぽの初回のみ、山口士十さん達の初期データを流し込む
                             saveToCloud(defaultMembers);
                         }
                     }
                 } catch (e) {
-                    console.error("Google読み込みエラー:", e);
+                    console.error(e);
                 }
             };
 
@@ -105,7 +101,7 @@
                 loadFromCloud();
                 const timer = setInterval(() => {
                     loadFromCloud();
-                }, 4000); // 4秒おきに自動でスプシの最新データを全員に同期
+                }, 4000); 
                 return () => clearInterval(timer);
             }, [hasLoaded]);
 
@@ -123,7 +119,7 @@
 
             const handleSaveSettings = () => {
                 changeAndSync(localMembers);
-                alert("目標・メンバー設定をスプレッドシートへ保存しました！リロードしても絶対に消えません。");
+                alert("設定を保存しました。");
                 setActiveTab("matrix");
             };
 
@@ -179,7 +175,7 @@
             };
 
             const handleResetAll = () => {
-                if(!confirm("本日の予約数・行動量の進捗を完全に0にリセットしますか？")) return;
+                if(!confirm("本日の数値をすべてリセットしますか？")) return;
                 const next = members.map(m => ({
                     ...m,
                     calls_28: 0, calls_27: 0, connects_28: 0, connects_27: 0, callbacks_28: 0, callbacks_27: 0,
@@ -191,7 +187,6 @@
                 changeAndSync(next);
             };
 
-            // --- 📊 計算集計 ---
             const stats = useMemo(() => {
                 let totalInitialGoalApps = 0; let totalAdjustedGoalApps = 0;
                 let totalGoalCalls = 0; let totalCalls = 0; let totalApps = 0; let totalConnects = 0; let totalCallbacks = 0;
@@ -246,17 +241,17 @@
             return (
                 <div className="max-w-7xl mx-auto space-y-4 pb-12 select-none">
                     
-                    {/* 全体総進捗ダッシュボード */}
+                    {/* ダッシュボード */}
                     <div className="bg-gradient-to-r from-slate-800 via-indigo-950 to-slate-800 p-4 rounded-2xl border border-indigo-500/40 shadow-xl relative">
                         <div className="absolute top-2 right-3 flex items-center gap-1.5 text-[10px] text-gray-400">
-                            <span className={`w-2 h-2 rounded-full ${isSyncing ? "bg-amber-400 animate-ping" : "bg-emerald-400"}`}></span>
-                            <span>📊 Googleスプレッドシート完全同期中</span>
+                            <span className={`w-2 h-2 rounded-full ${isSyncing ? "bg-amber-400" : "bg-emerald-400"}`}></span>
+                            <span>同期中</span>
                         </div>
                         <h2 className="text-center text-xs font-bold text-indigo-400 tracking-widest mb-1.5">📱 本日の全体総進捗 (全員の合計)</h2>
                         
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
                             <div className="bg-slate-900 p-2 rounded-xl text-center border-2 border-emerald-500/60 col-span-1 md:col-span-2">
-                                <p className="text-[10px] text-emerald-400 font-black">🔥 修正後 総予約数</p>
+                                <p className="text-[10px] text-emerald-400 font-black">修正後 総予約数</p>
                                 <p className="text-2xl font-black text-emerald-400">{stats.total.apps} <span className="text-xs font-normal text-gray-500">/ {stats.total.adjustedGoalApps} A</span></p>
                                 <div className="text-[10px] text-gray-400 mt-1 flex justify-center gap-3">
                                     <span>修正後達成率: <b className="text-amber-400 text-xs">{stats.total.adjustedGoalApps > 0 ? Math.round((stats.total.apps / stats.total.adjustedGoalApps) * 100) : 0}%</b></span>
@@ -278,7 +273,7 @@
                         </div>
                     </div>
 
-                    {/* タブナビゲーション */}
+                    {/* タブ */}
                     <div className="flex bg-slate-800 p-1 rounded-xl w-full max-w-lg mx-auto border border-slate-700 text-xs">
                         <button onClick={() => handleTabChange("matrix")} className={`flex-1 py-2 rounded-lg font-bold transition ${activeTab === "matrix" ? "bg-indigo-600 text-white" : "text-gray-400"}`}>📊 進捗表</button>
                         <button onClick={() => handleTabChange("activity")} className={`flex-1 py-2 rounded-lg font-bold transition ${activeTab === "activity" ? "bg-indigo-600 text-white" : "text-gray-400"}`}>📞 行動量入力</button>
@@ -286,7 +281,7 @@
                         <button onClick={() => handleTabChange("settings")} className={`flex-1 py-2 rounded-lg font-bold transition ${activeTab === "settings" ? "bg-indigo-600 text-white" : "text-gray-400"}`}>⚙️ 朝一設定</button>
                     </div>
 
-                    {/* ---------------- 📊 タブ1: 進捗表 ---------------- */}
+                    {/* 📊 タブ1: 進捗表 */}
                     {activeTab === "matrix" && (
                         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-2 overflow-hidden shadow-inner">
                             <div className="overflow-x-auto">
@@ -325,13 +320,13 @@
                                                 <tr key={m.id} className="hover:bg-slate-750">
                                                     <td className="p-2 font-bold sticky left-0 bg-slate-800 shadow-md z-10">
                                                         <div className="text-white text-sm">{m.name}</div>
-                                                        {m.buddyGroup !== "none" && m.buddyGroup !== "なし" && <div className="text-[10px] text-purple-400">👥 {bStat.apps}/{bStat.adjustedGoalApps}A</div>}
+                                                        {m.buddyGroup !== "none" && m.buddyGroup !== "なし" && <div className="text-[10px] text-purple-400">👥 {bStat.apps}/{bStat.adjustedGoalApps}</div>}
                                                     </td>
                                                     <td className="p-2 bg-slate-900/20 text-left text-[11px] font-medium space-y-0.5 whitespace-nowrap border-r border-slate-700/30">
                                                         <div className="flex justify-between text-gray-300"><span>総予約:</span><span className="font-bold text-emerald-400">{myTotalApps} / {myAdjustedGoal} <span className="text-[9px] text-gray-500">({myInitialGoal})</span></span></div>
-                                                        <div className="text-[10px] text-cyan-400 flex justify-between bg-cyan-950/30 px-1 rounded"><span>💎 3日以内比率:</span><span className="font-bold">{rate3Day}% <span>({my3DayApps}A)</span></span></div>
-                                                        <div className={`text-[10px] flex justify-between px-1 rounded ${connectRateStr.includes("⚠️") ? "bg-red-950/50 text-red-400 font-bold" : "text-amber-400/90"}`}><span>📞 着電→予約率:</span><span>{connectRateStr} <span className="text-[9px] opacity-60">({myConnectApps}/{myTotalConnects})</span></span></div>
-                                                        <div className={`text-[10px] flex justify-between px-1 rounded ${callbackRateStr.includes("⚠️") ? "bg-red-950/50 text-red-400 font-bold" : "text-purple-400/90"}`}><span>🔄 折返→予約率:</span><span>{callbackRateStr} <span className="text-[9px] opacity-60">({myCallbackApps}/{myTotalCallbacks})</span></span></div>
+                                                        <div className="text-[10px] text-cyan-400 flex justify-between bg-cyan-950/30 px-1 rounded"><span>3日以内比率:</span><span className="font-bold">{rate3Day}% <span>({my3DayApps}A)</span></span></div>
+                                                        <div className={`text-[10px] flex justify-between px-1 rounded ${connectRateStr.includes("⚠️") ? "bg-red-950/50 text-red-400 font-bold" : "text-amber-400/90"}`}><span>着電→予約率:</span><span>{connectRateStr} <span className="text-[9px] opacity-60">({myConnectApps}/{myTotalConnects})</span></span></div>
+                                                        <div className={`text-[10px] flex justify-between px-1 rounded ${callbackRateStr.includes("⚠️") ? "bg-red-950/50 text-red-400 font-bold" : "text-purple-400/90"}`}><span>折返→予約率:</span><span>{callbackRateStr} <span className="text-[9px] opacity-60">({myCallbackApps}/{myTotalCallbacks})</span></span></div>
                                                     </td>
                                                     {TERMS.map(term => {
                                                         const h = m.hourly[term];
@@ -341,7 +336,7 @@
                                                             <td key={term} className="p-2 text-center text-gray-600 font-medium">-</td>
                                                         ) : (
                                                             <td key={term} className="p-2 text-center min-w-[110px] bg-emerald-950/20">
-                                                                <div className="text-base font-black text-emerald-400">{termApps} <span className="text-[10px] font-normal text-gray-500">/ {tGoal}A</span></div>
+                                                                <div className="text-base font-black text-emerald-400">{termApps} <span className="text-[10px] font-normal text-gray-400">/ {tGoal}A</span></div>
                                                                 <div className="text-[9px] text-gray-400 leading-tight mt-0.5 max-w-[110px] mx-auto text-left pl-2">
                                                                     {h.app_28_connect > 0 && <div>28着:{h.app_28_connect}</div>}
                                                                     {h.app_28_connect_3day > 0 && <div className="text-cyan-400 font-bold">28着(3日):{h.app_28_connect_3day}</div>}
@@ -362,7 +357,7 @@
                                     </tbody>
                                     <tfoot>
                                         <tr className="bg-slate-950 font-bold border-t-2 border-slate-600 text-xs">
-                                            <td className="p-3 sticky left-0 bg-slate-950 z-10 text-indigo-400">⏰ 全員合計</td>
+                                            <td className="p-3 sticky left-0 bg-slate-950 z-10 text-indigo-400">合計</td>
                                             <td className="p-3 text-center text-emerald-400 text-sm">{stats.total.apps} / {stats.total.adjustedGoalApps} A</td>
                                             {TERMS.map(term => {
                                                 const tData = stats.terms[term];
@@ -370,7 +365,7 @@
                                                 return (
                                                     <td key={term} className="p-3 text-center">
                                                         <div className="text-emerald-400 text-sm font-black">{tData.apps} / {tData.adjustedGoalApps} A</div>
-                                                        <div className="text-[10px] bg-slate-800 text-amber-400 rounded px-1 py-0.5 mt-1 inline-block">修正後達成率:{rate}%</div>
+                                                        <div className="text-[10px] bg-slate-800 text-amber-400 rounded px-1 py-0.5 mt-1 inline-block">達成率:{rate}%</div>
                                                     </td>
                                                 );
                                             })}
@@ -381,11 +376,11 @@
                         </div>
                     )}
 
-                    {/* ---------------- 📞 タブ2: 行動量・アポ入力 ---------------- */}
+                    {/* 📞 タブ2: 行動量・アポ入力 */}
                     {activeTab === "activity" && (
                         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-4 shadow-xl">
                             <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-xl border border-slate-700">
-                                <label className="text-xs font-bold text-gray-400 whitespace-nowrap">インターン生:</label>
+                                <label className="text-xs font-bold text-gray-400 whitespace-nowrap">メンバー選択:</label>
                                 <select value={selectedMemberId} onChange={(e) => setSelectedMemberId(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-xs font-bold text-white outline-none">
                                     {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                 </select>
@@ -393,25 +388,25 @@
 
                             {/* アポ予約入力 */}
                             <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-900/40 space-y-3">
-                                <div className="text-xs font-black text-emerald-400 border-b border-emerald-900/30 pb-1">🎯 アポ（予約）の記録（プルダウン必須）</div>
+                                <div className="text-xs font-black text-emerald-400 border-b border-emerald-900/30 pb-1">🎯 アポの記録</div>
                                 <div className="grid grid-cols-2 gap-2">
                                     <div>
-                                        <label className="block text-[10px] text-gray-400 font-bold mb-1">① 時間帯（ターム）</label>
+                                        <label className="block text-[10px] text-gray-400 font-bold mb-1">時間帯</label>
                                         <select value={selectedTerm} onChange={(e) => setSelectedTerm(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs text-white outline-none">
                                             {TERMS.map(t => <option key={t} value={t}>{t}</option>)}
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] text-gray-400 font-bold mb-1">② アポ経路</label>
+                                        <label className="block text-[10px] text-gray-400 font-bold mb-1">アポ経路</label>
                                         <select value={selectedAppType} onChange={(e) => setSelectedAppType(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs text-emerald-300 font-bold outline-none">
                                             <option value="app_28_connect">28卒(着電・通常)</option>
-                                            <option value="app_28_connect_3day">💎 28卒(着電・3日以内)</option>
+                                            <option value="app_28_connect_3day">28卒(着電・3日以内)</option>
                                             <option value="app_28_callback">28卒(折り返し・通常)</option>
-                                            <option value="app_28_callback_3day">💎 28卒(折り返し・3日以内)</option>
+                                            <option value="app_28_callback_3day">28卒(折り返し・3日以内)</option>
                                             <option value="app_27_connect">27卒(着電・通常)</option>
-                                            <option value="app_27_connect_3day">💎 27卒(着電・3日以内)</option>
+                                            <option value="app_27_connect_3day">27卒(着電・3日以内)</option>
                                             <option value="app_27_callback">27卒(折り返し・通常)</option>
-                                            <option value="app_27_callback_3day">💎 27卒(折り返し・3日以内)</option>
+                                            <option value="app_27_callback_3day">27卒(折り返し・3日以内)</option>
                                             <option value="app_27_sms">27卒(SMS)</option>
                                         </select>
                                     </div>
@@ -426,9 +421,9 @@
                                 </div>
                             </div>
 
-                            {/* 行動量マトリックス（左右対称の完全対等設計） */}
+                            {/* 行動量マトリックス */}
                             <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-700 space-y-3">
-                                <div className="text-xs font-black text-indigo-400 border-b border-slate-800 pb-1">📊 1日の行動量（完全累積ポチポチ表）</div>
+                                <div className="text-xs font-black text-indigo-400 border-b border-slate-800 pb-1">📊 行動量（累積）</div>
                                 <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/40">
                                     <table className="w-full text-center border-collapse text-xs table-fixed">
                                         <thead>
@@ -446,8 +441,6 @@
                                             ].map(row => (
                                                 <tr key={row.label}>
                                                     <td className={`p-2 text-left font-black border-r border-slate-800 ${row.color}`}>{row.label}</td>
-                                                    
-                                                    {/* 28卒 */}
                                                     <td className="p-2 space-y-1.5 border-r border-slate-800">
                                                         <div className="text-lg font-black text-white">{currentSelectedMember[row.k28] || 0} <span className="text-[10px] text-gray-500 font-normal">件</span></div>
                                                         <div className="flex gap-1 justify-center flex-wrap">
@@ -461,8 +454,6 @@
                                                             <button onClick={() => handleActivityChange(selectedMemberId, row.k28, 50)} className="px-2 py-0.5 bg-purple-600 text-white rounded font-bold text-xs">+50</button>
                                                         </div>
                                                     </td>
-
-                                                    {/* 27卒 */}
                                                     <td className="p-2 space-y-1.5">
                                                         <div className="text-lg font-black text-white">{currentSelectedMember[row.k27] || 0} <span className="text-[10px] text-gray-500 font-normal">件</span></div>
                                                         <div className="flex gap-1 justify-center flex-wrap">
@@ -485,12 +476,11 @@
                         </div>
                     )}
 
-                    {/* ---------------- 📈 タブ3: 目標修正ページ ---------------- */}
+                    {/* 📈 タブ3: 目標修正ページ */}
                     {activeTab === "adjust" && (
                         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-4 shadow-xl">
                             <div>
-                                <h2 className="text-sm font-black text-white">📈 予約目標数の調整（上方修正・下方修正）</h2>
-                                <p className="text-[10px] text-gray-400 mt-0.5">数値を増減させると、全体の達成率が即座に再計算されます。</p>
+                                <h2 className="text-sm font-black text-white">目標調整（修正）</h2>
                             </div>
 
                             <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
@@ -510,7 +500,7 @@
                                                     <div key={term} className="bg-slate-950/60 px-3 py-1.5 rounded-lg border border-slate-850 flex items-center justify-between text-xs">
                                                         <div>
                                                             <div className="text-gray-400 font-bold">{term}</div>
-                                                            <div className="text-[10px] text-gray-500">朝一の初期: {initialG}A</div>
+                                                            <div className="text-[10px] text-gray-500">初期目標: {initialG}A</div>
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             <button onClick={() => adjustTermGoal(m.id, term, -1)} className="w-6 h-6 bg-red-950/80 text-red-400 hover:bg-red-900 rounded font-black border border-red-900/50 flex items-center justify-center">-1</button>
@@ -529,14 +519,13 @@
                         </div>
                     )}
 
-                    {/* ---------------- 🎯 タブ4: 朝一設定 ---------------- */}
+                    {/* 🎯 タブ4: 朝一設定 */}
                     {activeTab === "settings" && (
                         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-4 shadow-xl">
-                            
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center border-b border-slate-700 pb-1">
-                                    <h3 className="text-xs font-black text-white">⚙️ 朝一の目標設定·メンバー管理</h3>
-                                    <button onClick={addLocalMember} className="bg-indigo-600 hover:bg-indigo-55 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow">➕ インターン生を追加</button>
+                                    <h3 className="text-xs font-black text-white">⚙️ 目標設定・メンバー管理</h3>
+                                    <button onClick={addLocalMember} className="bg-indigo-600 hover:bg-indigo-55 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow">＋ メンバーを追加</button>
                                 </div>
 
                                 <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-1">
@@ -567,7 +556,7 @@
 
                                             <div className="grid grid-cols-1 gap-2 bg-slate-950/50 p-2 rounded border border-slate-800">
                                                 <div>
-                                                    <label className="block text-[10px] text-indigo-400 font-black mb-1">🎯 朝一の「架電数」目標（1日の総数）</label>
+                                                    <label className="block text-[10px] text-indigo-400 font-black mb-1">🎯 架電数 目標</label>
                                                     <input 
                                                         type="number" 
                                                         value={m.goalCalls === 0 ? "" : m.goalCalls} 
@@ -579,7 +568,7 @@
                                                 </div>
                                                 
                                                 <div>
-                                                    <label className="block text-[10px] text-emerald-400 font-black mb-1">🎯 朝一の「予約数」目標（時間帯ごとに入力）</label>
+                                                    <label className="block text-[10px] text-emerald-400 font-black mb-1">🎯 予約数 目標（時間帯別）</label>
                                                     <div className="grid grid-cols-4 gap-1 text-center">
                                                         {TERMS.map(t => (
                                                             <div key={t}>
@@ -602,15 +591,15 @@
                                 </div>
                             </div>
 
-                            {/* 一発確定保存ボタン */}
+                            {/* 保存ボタン */}
                             <div className="pt-2 text-center space-y-4">
                                 <button onClick={handleSaveSettings} className="w-full max-w-md bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs py-3.5 rounded-xl shadow-xl transition tracking-widest">
-                                    💾 この設定で朝一の目標を確定して保存する
+                                    💾 設定を保存する
                                 </button>
                                 
                                 <div className="border-t border-slate-700 pt-4">
                                     <button onClick={handleResetAll} className="w-full max-w-xs bg-red-700 hover:bg-red-600 text-white font-black text-xs py-2 rounded-xl shadow-md transition">
-                                        🚨 本日の進捗数値をすべて0にリセット
+                                        🚨 数値をすべてリセット
                                     </button>
                                 </div>
                             </div>

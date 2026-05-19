@@ -73,6 +73,7 @@
                 setExpandedMembers(prev => ({ ...prev, [id]: !prev[id] }));
             };
 
+            // 👥 バディ別のソート・合算数値の集計ロジック
             const groupedMembers = useMemo(() => {
                 const getBuddyOrder = (group) => {
                     if (group === "バディ1") return 1;
@@ -95,10 +96,27 @@
 
                 return Object.keys(groups)
                     .sort((a, b) => getBuddyOrder(a) - getBuddyOrder(b))
-                    .map(key => ({
-                        buddyGroupName: key,
-                        list: groups[key].sort((a, b) => a.name.localeCompare(b.name, 'ja'))
-                    }));
+                    .map(key => {
+                        const list = groups[key].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+                        
+                        let buddyApps = 0;
+                        let buddyInitialGoal = 0;
+                        let buddyAdjustedGoal = 0;
+                        
+                        list.forEach(m => {
+                            buddyApps += TERMS.reduce((sum, t) => sum + APP_KEYS.reduce((s, k) => s + (m.hourly[t][k] || 0), 0), 0);
+                            buddyInitialGoal += TERMS.reduce((sum, t) => sum + (m.initialTermGoals[t] || 0), 0);
+                            buddyAdjustedGoal += TERMS.reduce((sum, t) => sum + (m.termGoals[t] || 0), 0);
+                        });
+
+                        return {
+                            buddyGroupName: key,
+                            list,
+                            buddyApps,
+                            buddyInitialGoal,
+                            buddyAdjustedGoal
+                        };
+                    });
             }, [members]);
 
             const saveToCloud = async (currentMembers) => {
@@ -344,174 +362,171 @@
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-700/50 text-xs">
-                                        {groupedMembers.map(group => {
-                                            const bStat = stats.buddies[group.buddyGroupName] || { apps: 0, initialGoalApps: 0, adjustedGoalApps: 0 };
-                                            return (
-                                                <React.Fragment key={group.buddyGroupName}>
-                                                    {/* 👥 【機能新設】バディごとの合算数値（バディ数字・バディ目標）を表示するヘッダー行 */}
-                                                    <tr className="bg-slate-950/60 border-t border-b border-slate-800 font-bold">
-                                                        <td className="p-2 sticky left-0 bg-slate-950 z-10 text-xs font-black text-indigo-400">
-                                                            👥 {group.buddyGroupName}
-                                                        </td>
-                                                        <td className="p-2 bg-slate-950/40 text-left text-[11px] border-r border-slate-700/30">
-                                                            {group.buddyGroupName !== "バディなし" && (
-                                                                <div className="text-gray-300 space-y-0.5">
+                                        {groupedMembers.map(group => (
+                                            <React.Fragment key={group.buddyGroupName}>
+                                                {/* 👥 バディ区切りヘッダーに「バディ数字」と「バディ目標（斜線対応）」を完全実装 */}
+                                                <tr className="bg-slate-950/60 border-t border-b border-slate-800 font-bold">
+                                                    <td className="p-2 sticky left-0 bg-slate-950 z-10 text-xs font-black text-indigo-400">
+                                                        👥 {group.buddyGroupName}
+                                                    </td>
+                                                    <td className="p-2 bg-slate-950/40 text-left text-[11px] border-r border-slate-700/30">
+                                                        {group.buddyGroupName !== "バディなし" && (
+                                                            <div className="text-gray-300 space-y-0.5">
+                                                                <div className="flex justify-between">
+                                                                    <span>バディ数字:</span>
+                                                                    <span className="font-bold text-indigo-400 text-xs">{group.buddyApps}</span>
+                                                                </div>
+                                                                <div className="flex justify-between text-[10px]">
+                                                                    <span>バディ目標:</span>
+                                                                    <span>
+                                                                        {group.buddyInitialGoal !== group.buddyAdjustedGoal ? (
+                                                                            <>
+                                                                                <span className="line-through text-gray-500 mr-1">{group.buddyInitialGoal}</span>
+                                                                                <span className="text-amber-400 font-bold">{group.buddyAdjustedGoal}</span>
+                                                                            </>
+                                                                        ) : (
+                                                                            <span className="text-gray-400">{group.buddyInitialGoal}</span>
+                                                                        )}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    {TERMS.map(t => <td key={t} className="p-2 bg-slate-900/10"></td>)}
+                                                </tr>
+                                                
+                                                {group.list.map(m => {
+                                                    const myTotalApps = TERMS.reduce((sum, t) => sum + APP_KEYS.reduce((s, k) => s + (m.hourly[t][k] || 0), 0), 0);
+                                                    const myAdjustedGoal = TERMS.reduce((sum, t) => sum + (m.termGoals[t] || 0), 0);
+                                                    const myInitialGoal = TERMS.reduce((sum, t) => sum + (m.initialTermGoals[t] || 0), 0);
+                                                    
+                                                    const my28ConnectApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_28_connect || 0) + (m.hourly[t].app_28_connect_3day || 0), 0);
+                                                    const my28CallbackApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_28_callback || 0) + (m.hourly[t].app_28_callback_3day || 0), 0);
+                                                    const my27ConnectApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_27_connect || 0) + (m.hourly[t].app_27_connect_3day || 0), 0);
+                                                    const my27CallbackApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_27_callback || 0) + (m.hourly[t].app_27_callback_3day || 0), 0);
+
+                                                    const my3DayApps = TERMS.reduce((sum, t) => {
+                                                        const h = m.hourly[t];
+                                                        return sum + (h.app_28_connect_3day || 0) + (h.app_28_callback_3day || 0) + (h.app_27_connect_3day || 0) + (h.app_27_callback_3day || 0);
+                                                    }, 0);
+
+                                                    const rate28Connect = m.connects_28 > 0 ? Math.round((my28ConnectApps / m.connects_28) * 100) + "%" : "0%";
+                                                    const rate28Callback = m.callbacks_28 > 0 ? Math.round((my28CallbackApps / m.callbacks_28) * 100) + "%" : "0%";
+                                                    const rate27Connect = m.connects_27 > 0 ? Math.round((my27ConnectApps / m.connects_27) * 100) + "%" : "0%";
+                                                    const rate27Callback = m.callbacks_27 > 0 ? Math.round((my27CallbackApps / m.callbacks_27) * 100) + "%" : "0%";
+                                                    const rate3Day = myTotalApps > 0 ? Math.round((my3DayApps / myTotalApps) * 100) : 0;
+
+                                                    const err28C = my28ConnectApps > m.connects_28;
+                                                    const err28Cb = my28CallbackApps > m.callbacks_28;
+                                                    const err27C = my27ConnectApps > m.connects_27;
+                                                    const err27Cb = my27CallbackApps > m.callbacks_27;
+
+                                                    const isExpanded = !!expandedMembers[m.id];
+
+                                                    return (
+                                                        <tr key={m.id} className="hover:bg-slate-750">
+                                                            <td className="p-2 font-bold sticky left-0 bg-slate-800 shadow-md z-10">
+                                                                <div className="text-white text-sm">{m.name}</div>
+                                                            </td>
+                                                            
+                                                            {/* 🏷️ 表記を「個人数字」「個人目標（斜線ハイライト対応）」に完全修正 */}
+                                                            <td className="p-2 bg-slate-900/20 text-left text-[11px] font-medium border-r border-slate-700/30 cursor-pointer select-none" onClick={() => toggleExpand(m.id)}>
+                                                                <div className="text-gray-300 border-b border-slate-700/50 pb-1 mb-1 space-y-0.5">
                                                                     <div className="flex justify-between">
-                                                                        <span>バディ数字:</span>
-                                                                        <span className="font-bold text-indigo-400 text-xs">{bStat.apps}</span>
+                                                                        <span>個人数字:</span>
+                                                                        <span className="font-bold text-emerald-400 text-xs">{myTotalApps}</span>
                                                                     </div>
                                                                     <div className="flex justify-between text-[10px]">
-                                                                        <span>バディ目標:</span>
+                                                                        <span>個人目標:</span>
                                                                         <span>
-                                                                            {bStat.initialGoalApps !== bStat.adjustedGoalApps ? (
+                                                                            {myInitialGoal !== myAdjustedGoal ? (
                                                                                 <>
-                                                                                    <span className="line-through text-gray-500 mr-1">{bStat.initialGoalApps}</span>
-                                                                                    <span className="text-amber-400 font-bold">{bStat.adjustedGoalApps}</span>
+                                                                                    <span className="line-through text-gray-500 mr-1">{myInitialGoal}</span>
+                                                                                    <span className="text-amber-400 font-bold">{myAdjustedGoal}</span>
                                                                                 </>
                                                                             ) : (
-                                                                                <span className="text-gray-400">{bStat.initialGoalApps}</span>
+                                                                                <span className="text-gray-400">{myInitialGoal}</span>
                                                                             )}
                                                                         </span>
                                                                     </div>
                                                                 </div>
-                                                            )}
-                                                        </td>
-                                                        {TERMS.map(t => <td key={t} className="p-2 bg-slate-900/10"></td>)}
-                                                    </tr>
-                                                    
-                                                    {group.list.map(m => {
-                                                        const myTotalApps = TERMS.reduce((sum, t) => sum + APP_KEYS.reduce((s, k) => s + (m.hourly[t][k] || 0), 0), 0);
-                                                        const myAdjustedGoal = TERMS.reduce((sum, t) => sum + (m.termGoals[t] || 0), 0);
-                                                        const myInitialGoal = TERMS.reduce((sum, t) => sum + (m.initialTermGoals[t] || 0), 0);
-                                                        
-                                                        const my28ConnectApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_28_connect || 0) + (m.hourly[t].app_28_connect_3day || 0), 0);
-                                                        const my28CallbackApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_28_callback || 0) + (m.hourly[t].app_28_callback_3day || 0), 0);
-                                                        const my27ConnectApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_27_connect || 0) + (m.hourly[t].app_27_connect_3day || 0), 0);
-                                                        const my27CallbackApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_27_callback || 0) + (m.hourly[t].app_27_callback_3day || 0), 0);
-
-                                                        const my3DayApps = TERMS.reduce((sum, t) => {
-                                                            const h = m.hourly[t];
-                                                            return sum + (h.app_28_connect_3day || 0) + (h.app_28_callback_3day || 0) + (h.app_27_connect_3day || 0) + (h.app_27_callback_3day || 0);
-                                                        }, 0);
-
-                                                        const rate28Connect = m.connects_28 > 0 ? Math.round((my28ConnectApps / m.connects_28) * 100) + "%" : "0%";
-                                                        const rate28Callback = m.callbacks_28 > 0 ? Math.round((my28CallbackApps / m.callbacks_28) * 100) + "%" : "0%";
-                                                        const rate27Connect = m.connects_27 > 0 ? Math.round((my27ConnectApps / m.connects_27) * 100) + "%" : "0%";
-                                                        const rate27Callback = m.callbacks_27 > 0 ? Math.round((my27CallbackApps / m.callbacks_27) * 100) + "%" : "0%";
-                                                        const rate3Day = myTotalApps > 0 ? Math.round((my3DayApps / myTotalApps) * 100) : 0;
-
-                                                        const err28C = my28ConnectApps > m.connects_28;
-                                                        const err28Cb = my28CallbackApps > m.callbacks_28;
-                                                        const err27C = my27ConnectApps > m.connects_27;
-                                                        const err27Cb = my27CallbackApps > m.callbacks_27;
-
-                                                        const isExpanded = !!expandedMembers[m.id];
-
-                                                        return (
-                                                            <tr key={m.id} className="hover:bg-slate-750">
-                                                                <td className="p-2 font-bold sticky left-0 bg-slate-800 shadow-md z-10">
-                                                                    <div className="text-white text-sm">{m.name}</div>
-                                                                </td>
                                                                 
-                                                                {/* 🏷️ 表記を「個人数字」「個人目標」に修正 */}
-                                                                <td className="p-2 bg-slate-900/20 text-left text-[11px] font-medium border-r border-slate-700/30 cursor-pointer select-none" onClick={() => toggleExpand(m.id)}>
-                                                                    <div className="text-gray-300 border-b border-slate-700/50 pb-1 mb-1 space-y-0.5">
-                                                                        <div className="flex justify-between">
-                                                                            <span>個人数字:</span>
-                                                                            <span className="font-bold text-emerald-400 text-xs">{myTotalApps}</span>
+                                                                {!isExpanded ? (
+                                                                    <div className="text-[9px] text-indigo-400 bg-indigo-950/40 text-center py-0.5 rounded border border-indigo-900/20">タップして詳細を表示</div>
+                                                                ) : (
+                                                                    <div className="space-y-1 pt-0.5">
+                                                                        <div className="text-[10px] text-cyan-400 flex justify-between bg-cyan-950/30 px-1 rounded">
+                                                                            <span>3日以内比率:</span><span className="font-bold">{rate3Day}% ({my3DayApps})</span>
                                                                         </div>
-                                                                        <div className="flex justify-between text-[10px]">
-                                                                            <span>個人目標:</span>
-                                                                            <span>
-                                                                                {myInitialGoal !== myAdjustedGoal ? (
-                                                                                    <>
-                                                                                        <span className="line-through text-gray-500 mr-1">{myInitialGoal}</span>
-                                                                                        <span className="text-amber-400 font-bold">{myAdjustedGoal}</span>
-                                                                                    </>
+                                                                        
+                                                                        <div className="border-t border-slate-700/40 my-1 pt-0.5">
+                                                                            <div className="text-[9px] text-indigo-300 font-bold">28卒</div>
+                                                                            <div className={`text-[10px] flex justify-between px-1 rounded ${err28C ? "bg-red-950/50 text-red-400 font-bold" : "text-amber-400/95"}`}>
+                                                                                <span>着電予約:</span><span>{err28C ? "⚠️エラー" : `${rate28Connect} (${my28ConnectApps}/${m.connects_28})`}</span>
+                                                                            </div>
+                                                                            <div className={`text-[10px] flex justify-between px-1 rounded ${err28Cb ? "bg-red-950/50 text-red-400 font-bold" : "text-purple-400/95"}`}>
+                                                                                <span>折返予約:</span><span>{err28Cb ? "⚠️エラー" : `${rate28Callback} (${my28CallbackApps}/${m.callbacks_28})`}</span>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div className="border-t border-slate-700/40 my-1 pt-0.5">
+                                                                            <div className="text-[9px] text-purple-300 font-bold">27卒</div>
+                                                                            <div className={`text-[10px] flex justify-between px-1 rounded ${err27C ? "bg-red-950/50 text-red-400 font-bold" : "text-amber-400/95"}`}>
+                                                                                <span>着電予約:</span><span>{err27C ? "⚠️エラー" : `${rate27Connect} (${my27ConnectApps}/${m.connects_27})`}</span>
+                                                                            </div>
+                                                                            <div className={`text-[10px] flex justify-between px-1 rounded ${err27Cb ? "bg-red-950/50 text-red-400 font-bold" : "text-purple-400/90"}`}>
+                                                                                <span>折返予約:</span><span>{err27Cb ? "⚠️エラー" : `${rate27Callback} (${my27CallbackApps}/${m.callbacks_27})`}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+
+                                                            {TERMS.map(term => {
+                                                                const h = m.hourly[term];
+                                                                const termApps = APP_KEYS.reduce((sum, k) => sum + (h[k] || 0), 0);
+                                                                const initialG = m.initialTermGoals ? (m.initialTermGoals[term] || 0) : 0;
+                                                                const currentG = m.termGoals ? (m.termGoals[term] || 0) : 0;
+                                                                const isModified = initialG !== currentG;
+
+                                                                return (
+                                                                    <td key={term} className={`p-2 text-center min-w-[110px] ${termApps > 0 ? "bg-emerald-950/10" : ""}`}>
+                                                                        <div className="text-base font-black text-emerald-400">
+                                                                            {termApps}
+                                                                            <span className="text-[11px] font-normal text-gray-500 mx-1">/</span>
+                                                                            <span className="text-xs font-normal">
+                                                                                {!isModified ? (
+                                                                                    <span className="text-gray-400">{initialG}</span>
                                                                                 ) : (
-                                                                                    <span className="text-gray-400">{myInitialGoal}</span>
+                                                                                    <>
+                                                                                        <span className="line-through text-gray-500 mr-1">{initialG}</span>
+                                                                                        <span className="text-amber-400 font-bold">{currentG}</span>
+                                                                                    </>
                                                                                 )}
                                                                             </span>
                                                                         </div>
-                                                                    </div>
-                                                                    
-                                                                    {!isExpanded ? (
-                                                                        <div className="text-[9px] text-indigo-400 bg-indigo-950/40 text-center py-0.5 rounded border border-indigo-900/20">タップして詳細を表示</div>
-                                                                    ) : (
-                                                                        <div className="space-y-1 pt-0.5">
-                                                                            <div className="text-[10px] text-cyan-400 flex justify-between bg-cyan-950/30 px-1 rounded">
-                                                                                <span>3日以内比率:</span><span className="font-bold">{rate3Day}% ({my3DayApps})</span>
+                                                                        
+                                                                        {termApps > 0 && (
+                                                                            <div className="text-[9px] text-gray-400 leading-tight mt-0.5 max-w-[110px] mx-auto text-left pl-2">
+                                                                                {h.app_28_connect > 0 && <div>28着:{h.app_28_connect}</div>}
+                                                                                {h.app_28_connect_3day > 0 && <div className="text-cyan-400 font-bold">28着(3日):{h.app_28_connect_3day}</div>}
+                                                                                {h.app_28_callback > 0 && <div>28折:{h.app_28_callback}</div>}
+                                                                                {h.app_28_callback_3day > 0 && <div className="text-cyan-400 font-bold">28折(3日):{h.app_28_callback_3day}</div>}
+                                                                                {h.app_27_connect > 0 && <div>27着:{h.app_27_connect}</div>}
+                                                                                {h.app_27_connect_3day > 0 && <div className="text-cyan-400 font-bold">27着(3日):{h.app_27_connect_3day}</div>}
+                                                                                {h.app_27_callback > 0 && <div>27折:{h.app_27_callback}</div>}
+                                                                                {h.app_27_callback_3day > 0 && <div className="text-cyan-400 font-bold">27折(3日):{h.app_27_callback_3day}</div>}
+                                                                                {h.app_27_sms > 0 && <div>27SMS:{h.app_27_sms}</div>}
                                                                             </div>
-                                                                            
-                                                                            <div className="border-t border-slate-700/40 my-1 pt-0.5">
-                                                                                <div className="text-[9px] text-indigo-300 font-bold">28卒</div>
-                                                                                <div className={`text-[10px] flex justify-between px-1 rounded ${err28C ? "bg-red-950/50 text-red-400 font-bold" : "text-amber-400/95"}`}>
-                                                                                    <span>着電予約:</span><span>{err28C ? "⚠️エラー" : `${rate28Connect} (${my28ConnectApps}/${m.connects_28})`}</span>
-                                                                                </div>
-                                                                                <div className={`text-[10px] flex justify-between px-1 rounded ${err28Cb ? "bg-red-950/50 text-red-400 font-bold" : "text-purple-400/95"}`}>
-                                                                                    <span>折返予約:</span><span>{err28Cb ? "⚠️エラー" : `${rate28Callback} (${my28CallbackApps}/${m.callbacks_28})`}</span>
-                                                                                </div>
-                                                                            </div>
-
-                                                                            <div className="border-t border-slate-700/40 my-1 pt-0.5">
-                                                                                <div className="text-[9px] text-purple-300 font-bold">27卒</div>
-                                                                                <div className={`text-[10px] flex justify-between px-1 rounded ${err27C ? "bg-red-950/50 text-red-400 font-bold" : "text-amber-400/95"}`}>
-                                                                                    <span>着電予約:</span><span>{err27C ? "⚠️エラー" : `${rate27Connect} (${my27ConnectApps}/${m.connects_27})`}</span>
-                                                                                </div>
-                                                                                <div className={`text-[10px] flex justify-between px-1 rounded ${err27Cb ? "bg-red-950/50 text-red-400 font-bold" : "text-purple-400/90"}`}>
-                                                                                    <span>折返予約:</span><span>{err27Cb ? "⚠️エラー" : `${rate27Callback} (${my27CallbackApps}/${m.callbacks_27})`}</span>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-
-                                                                {TERMS.map(term => {
-                                                                    const h = m.hourly[term];
-                                                                    const termApps = APP_KEYS.reduce((sum, k) => sum + (h[k] || 0), 0);
-                                                                    const initialG = m.initialTermGoals ? (m.initialTermGoals[term] || 0) : 0;
-                                                                    const currentG = m.termGoals ? (m.termGoals[term] || 0) : 0;
-                                                                    const isModified = initialG !== currentG;
-
-                                                                    return (
-                                                                        <td key={term} className={`p-2 text-center min-w-[110px] ${termApps > 0 ? "bg-emerald-950/10" : ""}`}>
-                                                                            <div className="text-base font-black text-emerald-400">
-                                                                                {termApps}
-                                                                                <span className="text-[11px] font-normal text-gray-500 mx-1">/</span>
-                                                                                <span className="text-xs font-normal">
-                                                                                    {!isModified ? (
-                                                                                        <span className="text-gray-400">{initialG}</span>
-                                                                                    ) : (
-                                                                                        <>
-                                                                                            <span className="line-through text-gray-500 mr-1">{initialG}</span>
-                                                                                            <span className="text-amber-400 font-bold">{currentG}</span>
-                                                                                        </>
-                                                                                    )}
-                                                                                </span>
-                                                                            </div>
-                                                                            
-                                                                            {termApps > 0 && (
-                                                                                <div className="text-[9px] text-gray-400 leading-tight mt-0.5 max-w-[110px] mx-auto text-left pl-2">
-                                                                                    {h.app_28_connect > 0 && <div>28着:{h.app_28_connect}</div>}
-                                                                                    {h.app_28_connect_3day > 0 && <div className="text-cyan-400 font-bold">28着(3日):{h.app_28_connect_3day}</div>}
-                                                                                    {h.app_28_callback > 0 && <div>28折:{h.app_28_callback}</div>}
-                                                                                    {h.app_28_callback_3day > 0 && <div className="text-cyan-400 font-bold">28折(3日):{h.app_28_callback_3day}</div>}
-                                                                                    {h.app_27_connect > 0 && <div>27着:{h.app_27_connect}</div>}
-                                                                                    {h.app_27_connect_3day > 0 && <div className="text-cyan-400 font-bold">27着(3日):{h.app_27_connect_3day}</div>}
-                                                                                    {h.app_27_callback > 0 && <div>27折:{h.app_27_callback}</div>}
-                                                                                    {h.app_27_callback_3day > 0 && <div className="text-cyan-400 font-bold">27折(3日):{h.app_27_callback_3day}</div>}
-                                                                                    {h.app_27_sms > 0 && <div>27SMS:{h.app_27_sms}</div>}
-                                                                                </div>
-                                                                            )}
-                                                                        </td>
-                                                                    );
-                                                                })}
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </React.Fragment>
-                                            );
-                                        })}
+                                                                        )}
+                                                                    </td>
+                                                                );
+                                                            })}
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </React.Fragment>
+                                        ))}
                                     </tbody>
                                     <tfoot>
                                         <tr className="bg-slate-950 font-bold border-t-2 border-slate-600 text-xs">

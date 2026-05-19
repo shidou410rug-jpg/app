@@ -73,7 +73,7 @@
                 setExpandedMembers(prev => ({ ...prev, [id]: !prev[id] }));
             };
 
-            // 👥 バディ別のソート・合算数値の集計ロジック
+            // 👥 バディグループ昇順ソート & 壊れたデータでも絶対にクラッシュしない安全集計
             const groupedMembers = useMemo(() => {
                 const getBuddyOrder = (group) => {
                     if (group === "バディ1") return 1;
@@ -97,16 +97,24 @@
                 return Object.keys(groups)
                     .sort((a, b) => getBuddyOrder(a) - getBuddyOrder(b))
                     .map(key => {
-                        const list = groups[key].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+                        const list = groups[key].sort((a, b) => (a.name || "").localeCompare(b.name || "", 'ja'));
                         
                         let buddyApps = 0;
                         let buddyInitialGoal = 0;
                         let buddyAdjustedGoal = 0;
                         
                         list.forEach(m => {
-                            buddyApps += TERMS.reduce((sum, t) => sum + APP_KEYS.reduce((s, k) => s + (m.hourly[t][k] || 0), 0), 0);
-                            buddyInitialGoal += TERMS.reduce((sum, t) => sum + (m.initialTermGoals[t] || 0), 0);
-                            buddyAdjustedGoal += TERMS.reduce((sum, t) => sum + (m.termGoals[t] || 0), 0);
+                            if (m.hourly) {
+                                TERMS.forEach(t => {
+                                    if (m.hourly[t]) {
+                                        APP_KEYS.forEach(k => {
+                                            buddyApps += (m.hourly[t][k] || 0);
+                                        });
+                                    }
+                                    buddyInitialGoal += (m.initialTermGoals?.[t] || 0);
+                                    buddyAdjustedGoal += (m.termGoals?.[t] || 0);
+                                });
+                            }
                         });
 
                         return {
@@ -207,7 +215,7 @@
             const adjustTermGoal = (id, term, amount) => {
                 const next = members.map(m => {
                     if (m.id !== id) return m;
-                    const nextVal = Math.max(0, (m.termGoals[term] || 0) + amount);
+                    const nextVal = Math.max(0, (m.termGoals?.[term] || 0) + amount);
                     return { ...m, termGoals: { ...m.termGoals, [term]: nextVal } };
                 });
                 changeAndSync(next);
@@ -216,11 +224,13 @@
             const handleAppChange = (memberId, term, type, amount) => {
                 const next = members.map(m => {
                     if (m.id !== memberId) return m;
+                    const currentTermData = m.hourly?.[term] || {};
+                    const currentVal = currentTermData[type] || 0;
                     return {
                         ...m,
                         hourly: {
                             ...m.hourly,
-                            [term]: { ...m.hourly[term], [type]: Math.max(0, m.hourly[term][type] + amount) }
+                            [term]: { ...currentTermData, [type]: Math.max(0, currentVal + amount) }
                         }
                     };
                 });
@@ -228,7 +238,7 @@
             };
 
             const handleActivityChange = (memberId, type, amount) => {
-                const next = members.map(m => m.id === memberId ? { ...m, [type]: Math.max(0, m[type] + amount) } : m);
+                const next = members.map(m => m.id === memberId ? { ...m, [type]: Math.max(0, (m[type] || 0) + amount) } : m);
                 changeAndSync(next);
             };
 
@@ -256,12 +266,12 @@
 
                 members.forEach(m => {
                     totalGoalCalls += (m.goalCalls || 0);
-                    totalCalls += (m.calls_28 + m.calls_27);
-                    totalConnects += (m.connects_28 + m.connects_27);
-                    totalCallbacks += (m.callbacks_28 + m.callbacks_27);
+                    totalCalls += ((m.calls_28 || 0) + (m.calls_27 || 0));
+                    totalConnects += ((m.connects_28 || 0) + (m.connects_27 || 0));
+                    totalCallbacks += ((m.callbacks_28 || 0) + (m.callbacks_27 || 0));
 
                     TERMS.forEach(term => {
-                        const h = m.hourly[term];
+                        const h = m.hourly?.[term] || {};
                         const termApps = APP_KEYS.reduce((sum, k) => sum + (h[k] || 0), 0);
                         const initG = m.initialTermGoals ? (m.initialTermGoals[term] || 0) : 0;
                         const adjG = m.termGoals ? (m.termGoals[term] || 0) : 0;
@@ -276,23 +286,13 @@
                     });
                 });
 
-                const buddyStats = {};
-                members.forEach(m => {
-                    if (!m.buddyGroup || m.buddyGroup === "なし" || m.buddyGroup === "none") return;
-                    if (!buddyStats[m.buddyGroup]) buddyStats[m.buddyGroup] = { initialGoalApps: 0, adjustedGoalApps: 0, apps: 0 };
-                    TERMS.forEach(term => {
-                        buddyStats[m.buddyGroup].initialGoalApps += (m.initialTermGoals ? (m.initialTermGoals[term] || 0) : 0);
-                        buddyStats[m.buddyGroup].adjustedGoalApps += (m.termGoals ? (m.termGoals[term] || 0) : 0);
-                        buddyStats[m.buddyGroup].apps += APP_KEYS.reduce((sum, k) => sum + (m.hourly[term][k] || 0), 0);
-                    });
-                });
-
                 return {
                     total: { goalCalls: totalGoalCalls, initialGoalApps: totalInitialGoalApps, adjustedGoalApps: totalAdjustedGoalApps, calls: totalCalls, apps: totalApps, connects: totalConnects, callbacks: totalCallbacks },
-                    terms: termTotals,
-                    buddies: buddyStats
+                    terms: termTotals
                 };
             }, [members]);
+
+            const currentSelectedMember = members.find(m => m.id === selectedMemberId) || members[0] || {};
 
             return (
                 <div className="max-w-7xl mx-auto space-y-4 pb-12 select-none">
@@ -364,7 +364,7 @@
                                     <tbody className="divide-y divide-slate-700/50 text-xs">
                                         {groupedMembers.map(group => (
                                             <React.Fragment key={group.buddyGroupName}>
-                                                {/* 👥 バディ区切りヘッダーに「バディ数字」と「バディ目標（斜線対応）」を完全実装 */}
+                                                {/* 🏷️ バディ見出し行に「バディ数字」「バディ目標」の表示を完全適用 */}
                                                 <tr className="bg-slate-950/60 border-t border-b border-slate-800 font-bold">
                                                     <td className="p-2 sticky left-0 bg-slate-950 z-10 text-xs font-black text-indigo-400">
                                                         👥 {group.buddyGroupName}
@@ -396,30 +396,35 @@
                                                 </tr>
                                                 
                                                 {group.list.map(m => {
-                                                    const myTotalApps = TERMS.reduce((sum, t) => sum + APP_KEYS.reduce((s, k) => s + (m.hourly[t][k] || 0), 0), 0);
-                                                    const myAdjustedGoal = TERMS.reduce((sum, t) => sum + (m.termGoals[t] || 0), 0);
-                                                    const myInitialGoal = TERMS.reduce((sum, t) => sum + (m.initialTermGoals[t] || 0), 0);
+                                                    const myTotalApps = TERMS.reduce((sum, t) => sum + APP_KEYS.reduce((s, k) => s + (m.hourly?.[t]?.[k] || 0), 0), 0);
+                                                    const myAdjustedGoal = TERMS.reduce((sum, t) => sum + (m.termGoals?.[t] || 0), 0);
+                                                    const myInitialGoal = TERMS.reduce((sum, t) => sum + (m.initialTermGoals?.[t] || 0), 0);
                                                     
-                                                    const my28ConnectApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_28_connect || 0) + (m.hourly[t].app_28_connect_3day || 0), 0);
-                                                    const my28CallbackApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_28_callback || 0) + (m.hourly[t].app_28_callback_3day || 0), 0);
-                                                    const my27ConnectApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_27_connect || 0) + (m.hourly[t].app_27_connect_3day || 0), 0);
-                                                    const my27CallbackApps = TERMS.reduce((sum, t) => sum + (m.hourly[t].app_27_callback || 0) + (m.hourly[t].app_27_callback_3day || 0), 0);
+                                                    const my28ConnectApps = TERMS.reduce((sum, t) => sum + (m.hourly?.[t]?.app_28_connect || 0) + (m.hourly?.[t]?.app_28_connect_3day || 0), 0);
+                                                    const my28CallbackApps = TERMS.reduce((sum, t) => sum + (m.hourly?.[t]?.app_28_callback || 0) + (m.hourly?.[t]?.app_28_callback_3day || 0), 0);
+                                                    const my27ConnectApps = TERMS.reduce((sum, t) => sum + (m.hourly?.[t]?.app_27_connect || 0) + (m.hourly?.[t]?.app_27_connect_3day || 0), 0);
+                                                    const my27CallbackApps = TERMS.reduce((sum, t) => sum + (m.hourly?.[t]?.app_27_callback || 0) + (m.hourly?.[t]?.app_27_callback_3day || 0), 0);
 
                                                     const my3DayApps = TERMS.reduce((sum, t) => {
-                                                        const h = m.hourly[t];
+                                                        const h = m.hourly?.[t] || {};
                                                         return sum + (h.app_28_connect_3day || 0) + (h.app_28_callback_3day || 0) + (h.app_27_connect_3day || 0) + (h.app_27_callback_3day || 0);
                                                     }, 0);
 
-                                                    const rate28Connect = m.connects_28 > 0 ? Math.round((my28ConnectApps / m.connects_28) * 100) + "%" : "0%";
-                                                    const rate28Callback = m.callbacks_28 > 0 ? Math.round((my28CallbackApps / m.callbacks_28) * 100) + "%" : "0%";
-                                                    const rate27Connect = m.connects_27 > 0 ? Math.round((my27ConnectApps / m.connects_27) * 100) + "%" : "0%";
-                                                    const rate27Callback = m.callbacks_27 > 0 ? Math.round((my27CallbackApps / m.callbacks_27) * 100) + "%" : "0%";
+                                                    const connects28 = m.connects_28 || 0;
+                                                    const callbacks28 = m.callbacks_28 || 0;
+                                                    const connects27 = m.connects_27 || 0;
+                                                    const callbacks27 = m.callbacks_27 || 0;
+
+                                                    const rate28Connect = connects28 > 0 ? Math.round((my28ConnectApps / connects28) * 100) + "%" : "0%";
+                                                    const rate28Callback = callbacks28 > 0 ? Math.round((my28CallbackApps / callbacks28) * 100) + "%" : "0%";
+                                                    const rate27Connect = connects27 > 0 ? Math.round((my27ConnectApps / connects27) * 100) + "%" : "0%";
+                                                    const rate27Callback = callbacks27 > 0 ? Math.round((my27CallbackApps / callbacks27) * 100) + "%" : "0%";
                                                     const rate3Day = myTotalApps > 0 ? Math.round((my3DayApps / myTotalApps) * 100) : 0;
 
-                                                    const err28C = my28ConnectApps > m.connects_28;
-                                                    const err28Cb = my28CallbackApps > m.callbacks_28;
-                                                    const err27C = my27ConnectApps > m.connects_27;
-                                                    const err27Cb = my27CallbackApps > m.callbacks_27;
+                                                    const err28C = my28ConnectApps > connects28;
+                                                    const err28Cb = my28CallbackApps > callbacks28;
+                                                    const err27C = my27ConnectApps > connects27;
+                                                    const err27Cb = my27CallbackApps > callbacks27;
 
                                                     const isExpanded = !!expandedMembers[m.id];
 
@@ -429,7 +434,7 @@
                                                                 <div className="text-white text-sm">{m.name}</div>
                                                             </td>
                                                             
-                                                            {/* 🏷️ 表記を「個人数字」「個人目標（斜線ハイライト対応）」に完全修正 */}
+                                                            {/* 🏷️ 表記を「個人数字」「個人目標」に強制反映 */}
                                                             <td className="p-2 bg-slate-900/20 text-left text-[11px] font-medium border-r border-slate-700/30 cursor-pointer select-none" onClick={() => toggleExpand(m.id)}>
                                                                 <div className="text-gray-300 border-b border-slate-700/50 pb-1 mb-1 space-y-0.5">
                                                                     <div className="flex justify-between">
@@ -462,20 +467,20 @@
                                                                         <div className="border-t border-slate-700/40 my-1 pt-0.5">
                                                                             <div className="text-[9px] text-indigo-300 font-bold">28卒</div>
                                                                             <div className={`text-[10px] flex justify-between px-1 rounded ${err28C ? "bg-red-950/50 text-red-400 font-bold" : "text-amber-400/95"}`}>
-                                                                                <span>着電予約:</span><span>{err28C ? "⚠️エラー" : `${rate28Connect} (${my28ConnectApps}/${m.connects_28})`}</span>
+                                                                                <span>着電予約:</span><span>{err28C ? "⚠️エラー" : `${rate28Connect} (${my28ConnectApps}/${connects28})`}</span>
                                                                             </div>
                                                                             <div className={`text-[10px] flex justify-between px-1 rounded ${err28Cb ? "bg-red-950/50 text-red-400 font-bold" : "text-purple-400/95"}`}>
-                                                                                <span>折返予約:</span><span>{err28Cb ? "⚠️エラー" : `${rate28Callback} (${my28CallbackApps}/${m.callbacks_28})`}</span>
+                                                                                <span>折返予約:</span><span>{err28Cb ? "⚠️エラー" : `${rate28Callback} (${my28CallbackApps}/${callbacks28})`}</span>
                                                                             </div>
                                                                         </div>
 
                                                                         <div className="border-t border-slate-700/40 my-1 pt-0.5">
                                                                             <div className="text-[9px] text-purple-300 font-bold">27卒</div>
                                                                             <div className={`text-[10px] flex justify-between px-1 rounded ${err27C ? "bg-red-950/50 text-red-400 font-bold" : "text-amber-400/95"}`}>
-                                                                                <span>着電予約:</span><span>{err27C ? "⚠️エラー" : `${rate27Connect} (${my27ConnectApps}/${m.connects_27})`}</span>
+                                                                                <span>着電予約:</span><span>{err27C ? "⚠️エラー" : `${rate27Connect} (${my27ConnectApps}/${connects27})`}</span>
                                                                             </div>
                                                                             <div className={`text-[10px] flex justify-between px-1 rounded ${err27Cb ? "bg-red-950/50 text-red-400 font-bold" : "text-purple-400/90"}`}>
-                                                                                <span>折返予約:</span><span>{err27Cb ? "⚠️エラー" : `${rate27Callback} (${my27CallbackApps}/${m.callbacks_27})`}</span>
+                                                                                <span>折返予約:</span><span>{err27Cb ? "⚠️エラー" : `${rate27Callback} (${my27CallbackApps}/${callbacks27})`}</span>
                                                                             </div>
                                                                         </div>
                                                                     </div>
@@ -483,7 +488,7 @@
                                                             </td>
 
                                                             {TERMS.map(term => {
-                                                                const h = m.hourly[term];
+                                                                const h = m.hourly?.[term] || {};
                                                                 const termApps = APP_KEYS.reduce((sum, k) => sum + (h[k] || 0), 0);
                                                                 const initialG = m.initialTermGoals ? (m.initialTermGoals[term] || 0) : 0;
                                                                 const currentG = m.termGoals ? (m.termGoals[term] || 0) : 0;
@@ -561,13 +566,13 @@
                         </div>
                     )}
 
-                    {/* 📞 タブ2: 行動量・アポ入力 */}
+                    {/* 📞 タブ2: 行動量・アポ入力（データ安全防壁を徹底強化） */}
                     {activeTab === "activity" && (
                         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-4 shadow-xl">
                             <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-xl border border-slate-700">
                                 <label className="text-xs font-bold text-gray-400 whitespace-nowrap">メンバー選択:</label>
                                 <select value={selectedMemberId} onChange={(e) => setSelectedMemberId(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-xs font-bold text-white outline-none">
-                                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                    {members.map(m => <option key={m.id} value={m.id}>{m.name || "無名"}</option>)}
                                 </select>
                             </div>
 
@@ -600,13 +605,15 @@
                                     <span className="text-[11px] text-gray-400">現在の獲得件数:</span>
                                     <div className="flex items-center gap-3">
                                         <button onClick={() => handleAppChange(selectedMemberId, selectedTerm, selectedAppType, -1)} className="w-7 h-7 bg-slate-800 rounded text-gray-400 font-black text-sm">-1</button>
-                                        <span className="font-black text-emerald-400 text-lg w-6 text-center">{(currentSelectedMember.hourly[selectedTerm] && currentSelectedMember.hourly[selectedTerm][selectedAppType]) || 0}</span>
+                                        <span className="font-black text-emerald-400 text-lg w-6 text-center">
+                                            {currentSelectedMember?.hourly?.[selectedTerm]?.[selectedAppType] || 0}
+                                        </span>
                                         <button onClick={() => handleAppChange(selectedMemberId, selectedTerm, selectedAppType, 1)} className="w-7 h-7 bg-emerald-600 rounded text-white font-black text-sm">+1</button>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* 行動量マトリックス */}
+                            {/* 行動量マトリックス（オプショナルチェイニング `?.` で完全ガード） */}
                             <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-700 space-y-3">
                                 <div className="text-xs font-black text-indigo-400 border-b border-slate-800 pb-1">📊 行動量（累積）</div>
                                 <div className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/40">
@@ -627,7 +634,7 @@
                                                 <tr key={row.label}>
                                                     <td className={`p-2 text-left font-black border-r border-slate-800 ${row.color}`}>{row.label}</td>
                                                     <td className="p-2 space-y-1.5 border-r border-slate-800">
-                                                        <div className="text-lg font-black text-white">{currentSelectedMember[row.k28] || 0} <span className="text-[10px] text-gray-500 font-normal">件</span></div>
+                                                        <div className="text-lg font-black text-white">{currentSelectedMember?.[row.k28] || 0} <span className="text-[10px] text-gray-500 font-normal">件</span></div>
                                                         <div className="flex gap-1 justify-center flex-wrap">
                                                             <button onClick={() => handleActivityChange(selectedMemberId, row.k28, -50)} className="px-1 py-0.5 text-[9px] text-red-400 font-bold">-50</button>
                                                             <button onClick={() => handleActivityChange(selectedMemberId, row.k28, -10)} className="px-1 py-0.5 text-[9px] text-red-400 font-bold">-10</button>
@@ -640,7 +647,7 @@
                                                         </div>
                                                     </td>
                                                     <td className="p-2 space-y-1.5">
-                                                        <div className="text-lg font-black text-white">{currentSelectedMember[row.k27] || 0} <span className="text-[10px] text-gray-500 font-normal">件</span></div>
+                                                        <div className="text-lg font-black text-white">{currentSelectedMember?.[row.k27] || 0} <span className="text-[10px] text-gray-500 font-normal">件</span></div>
                                                         <div className="flex gap-1 justify-center flex-wrap">
                                                             <button onClick={() => handleActivityChange(selectedMemberId, row.k27, -50)} className="px-1 py-0.5 text-[9px] text-red-400 font-bold">-50</button>
                                                             <button onClick={() => handleActivityChange(selectedMemberId, row.k27, -10)} className="px-1 py-0.5 text-[9px] text-red-400 font-bold">-10</button>
@@ -677,8 +684,8 @@
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                                             {TERMS.map(term => {
-                                                const currentG = m.termGoals[term] || 0;
-                                                const initialG = m.initialTermGoals[term] || 0;
+                                                const currentG = m.termGoals?.[term] || 0;
+                                                const initialG = m.initialTermGoals?.[term] || 0;
                                                 const diffColor = currentG > initialG ? "text-cyan-400" : currentG < initialG ? "text-red-400" : "text-gray-400";
 
                                                 return (
